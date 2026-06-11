@@ -1310,7 +1310,7 @@ TU MISIÓN: Buscar en internet normativa ambiental colombiana nueva o reciente q
 
 Para cada norma encontrada indica: nombre/número, fecha, autoridad emisora, por qué aplica a Prebel, componente afectado y acción recomendada. Responde en español, claro y estructurado.`;
 
-        const response = await fetch("https://prebelproxy.vercel.app/api/claude", {
+        const response = await fetch("https://prebel-proxy-beige.vercel.app/api/claude-proxy", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
