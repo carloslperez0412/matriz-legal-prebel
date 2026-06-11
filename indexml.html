@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Matriz Legal Ambiental | Prebel 2026</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js"></script>
+    <link rel="stylesheet" href="styleml.css">
+</head>
+<body>
+
+    <header class="main-banner">
+        <div class="header-container">
+            <div class="title-group">
+                <h1>MATRIZ LEGAL <span class="light-text">Ambiental</span></h1>
+                <p class="subtitle-tech">SISTEMA INTEGRADO DE CUMPLIMIENTO</p>
+            </div>
+            <div class="logo-wrap">
+                <!-- Logo con fallback: si la imagen no carga, muestra el nombre -->
+                <img src="Logo ambiental sin fondo.png"
+                     alt="Prebel Logo"
+                     class="company-logo"
+                     onerror="this.style.display='none'; document.getElementById('logo-fallback').style.display='block';">
+                <span id="logo-fallback"
+                      style="display:none; color:#64748b; font-size:1.2rem; font-weight:800;
+                             letter-spacing:4px; text-transform:uppercase;">PREBEL</span>
+            </div>
+        </div>
+
+        <nav class="nav-centered-group" role="navigation" aria-label="Navegación principal">
+
+            <button id="btn-home" class="btn-nav" aria-label="Ir al panel de componentes">
+                <i class="fas fa-home"></i> Panel de Componentes
+            </button>
+
+            <label for="input-excel" class="btn-nav" style="cursor: pointer;"
+                   aria-label="Importar archivo de matriz legal">
+                <i class="fas fa-file-import"></i> Importar Matriz Legal
+            </label>
+            <input type="file"
+                   id="input-excel"
+                   accept=".xlsx, .xls"
+                   style="display: none;"
+                   aria-hidden="true">
+
+            <button id="btn-analisis" class="btn-nav btn-highlight"
+                    aria-label="Ver análisis de cumplimiento">
+                <i class="fas fa-chart-line"></i> Análisis de Cumplimiento
+            </button>
+
+        </nav>
+    </header>
+
+    <main class="container" role="main">
+
+        <!-- Vista 1: Panel principal de componentes -->
+        <div class="panel-cabecera">
+            <span class="panel-label">Componentes ambientales</span>
+            <span id="panel-fecha-importacion" class="panel-fecha" style="display:none;"></span>
+        </div>
+        <section id="grid-principal" class="componentes-grid" aria-label="Componentes ambientales">
+            <div class="comp-card card-agua" role="button" tabindex="0" aria-label="Componente Agua">
+                <div class="comp-card-top">
+                    <i class="fas fa-tint comp-icon"></i>
+                    <h3>Agua</h3>
+                </div>
+                <div class="comp-card-stats"></div>
+            </div>
+            <div class="comp-card card-aire" role="button" tabindex="0" aria-label="Componente Aire">
+                <div class="comp-card-top">
+                    <i class="fas fa-wind comp-icon"></i>
+                    <h3>Aire</h3>
+                </div>
+                <div class="comp-card-stats"></div>
+            </div>
+            <div class="comp-card card-energia" role="button" tabindex="0" aria-label="Componente Energía y combustibles">
+                <div class="comp-card-top">
+                    <i class="fas fa-bolt comp-icon"></i>
+                    <h3>Energía y combustibles</h3>
+                </div>
+                <div class="comp-card-stats"></div>
+            </div>
+            <div class="comp-card card-residuos" role="button" tabindex="0" aria-label="Componente Residuos">
+                <div class="comp-card-top">
+                    <i class="fas fa-recycle comp-icon"></i>
+                    <h3>Residuos</h3>
+                </div>
+                <div class="comp-card-stats"></div>
+            </div>
+            <div class="comp-card card-suelo" role="button" tabindex="0" aria-label="Componente Suelo y Biodiversidad">
+                <div class="comp-card-top">
+                    <i class="fas fa-leaf comp-icon"></i>
+                    <h3>Suelo y Biodiversidad</h3>
+                </div>
+                <div class="comp-card-stats"></div>
+            </div>
+            <div class="comp-card card-quimico" role="button" tabindex="0" aria-label="Componente Riesgo Químico">
+                <div class="comp-card-top">
+                    <i class="fas fa-flask comp-icon"></i>
+                    <h3>Riesgo Químico</h3>
+                </div>
+                <div class="comp-card-stats"></div>
+            </div>
+            <div class="comp-card card-contingencias" role="button" tabindex="0" aria-label="Componente Contingencias">
+                <div class="comp-card-top">
+                    <i class="fas fa-exclamation-triangle comp-icon"></i>
+                    <h3>Contingencias</h3>
+                </div>
+                <div class="comp-card-stats"></div>
+            </div>
+            <div class="comp-card card-otros" role="button" tabindex="0" aria-label="Componente Otros">
+                <div class="comp-card-top">
+                    <i class="fas fa-folder comp-icon"></i>
+                    <h3>Otros</h3>
+                </div>
+                <div class="comp-card-stats"></div>
+            </div>
+            <div class="comp-card card-gestion" role="button" tabindex="0" aria-label="Componente Mecanismos de Gestión">
+                <div class="comp-card-top">
+                    <i class="fas fa-clipboard-check comp-icon"></i>
+                    <h3>Mecanismos de Gestión</h3>
+                </div>
+                <div class="comp-card-stats"></div>
+            </div>
+        </section>
+
+        <!-- Vista 2: Detalle de componente -->
+        <section id="vista-detalle" style="display: none;" aria-label="Detalle del componente">
+            <div id="btn-back" class="back-btn" role="button" tabindex="0"
+                 aria-label="Volver al panel central">
+                ← VOLVER AL PANEL CENTRAL
+            </div>
+
+            <!-- Indicador de última importación (se activa desde JS) -->
+            <div id="info-modificacion"
+                 style="display:none; background:rgba(255,193,7,0.1); border:1px solid #ffc107;
+                        color:#ffc107; padding:12px; border-radius:4px; margin-bottom:20px;
+                        font-size:0.85rem; text-align:center; font-weight:600;">
+                <i class="fas fa-history"></i>
+                <span id="fecha-modificacion-texto">Última importación: --</span>
+            </div>
+
+            <h2 id="titulo-componente"
+                style="text-align:center; letter-spacing:3px; margin-bottom:20px;"
+                aria-live="polite"></h2>
+
+            <div id="contenido-dinamico"></div>
+        </section>
+
+        <!-- Vista 3: Dashboard de análisis -->
+        <section id="vista-analisis"
+                 style="display:none; padding-bottom:50px;"
+                 aria-label="Dashboard de análisis de cumplimiento">
+            <div id="btn-back-analisis" class="back-btn" role="button" tabindex="0"
+                 aria-label="Volver al panel central">
+                ← VOLVER AL PANEL CENTRAL
+            </div>
+            <h2 style="text-align:center; color:#ffc107; letter-spacing:4px; margin-bottom:30px;">
+                DASHBOARD ESTRATÉGICO PREBEL
+            </h2>
+            <div id="contenedor-kpis"
+                 style="display:grid; grid-template-columns:repeat(auto-fit, minmax(320px,1fr)); gap:20px;">
+            </div>
+        </section>
+
+    </main>
+
+    <!--
+        Firebase SDK
+        NOTA DE SEGURIDAD: Las credenciales están centralizadas en scriptml.js (PREBEL_CONFIG).
+        Este bloque solo carga los SDK necesarios, sin inicializar Firebase aquí.
+        La inicialización ocurre UNA SOLA VEZ en scriptml.js → función inicializarFirebase().
+    -->
+    <script src="https://www.gstatic.com/firebasejs/9.15.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.15.0/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.15.0/firebase-storage-compat.js"></script>
+
+    <!-- Script principal (incluye toda la lógica y la inicialización de Firebase) -->
+    <script src="scriptml.js?v=5"></script>
+
+</body>
+</html>
