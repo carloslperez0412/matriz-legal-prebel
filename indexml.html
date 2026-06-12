@@ -55,73 +55,33 @@
     <main class="container" role="main">
 
         <!-- Vista 1: Panel principal de componentes -->
-        <div class="panel-cabecera">
-            <span class="panel-label">Componentes ambientales</span>
-            <span id="panel-fecha-importacion" class="panel-fecha" style="display:none;"></span>
-        </div>
         <section id="grid-principal" class="componentes-grid" aria-label="Componentes ambientales">
             <div class="comp-card card-agua" role="button" tabindex="0" aria-label="Componente Agua">
-                <div class="comp-card-top">
-                    <i class="fas fa-tint comp-icon"></i>
-                    <h3>Agua</h3>
-                </div>
-                <div class="comp-card-stats"></div>
+                <div class="comp-card-top"><i class="fas fa-tint comp-icon"></i><h3>Agua</h3></div><div class="comp-card-stats"></div>
             </div>
             <div class="comp-card card-aire" role="button" tabindex="0" aria-label="Componente Aire">
-                <div class="comp-card-top">
-                    <i class="fas fa-wind comp-icon"></i>
-                    <h3>Aire</h3>
-                </div>
-                <div class="comp-card-stats"></div>
+                <div class="comp-card-top"><i class="fas fa-wind comp-icon"></i><h3>Aire</h3></div><div class="comp-card-stats"></div>
             </div>
             <div class="comp-card card-energia" role="button" tabindex="0" aria-label="Componente Energía y combustibles">
-                <div class="comp-card-top">
-                    <i class="fas fa-bolt comp-icon"></i>
-                    <h3>Energía y combustibles</h3>
-                </div>
-                <div class="comp-card-stats"></div>
+                <div class="comp-card-top"><i class="fas fa-bolt comp-icon"></i><h3>Energía y combustibles</h3></div><div class="comp-card-stats"></div>
             </div>
             <div class="comp-card card-residuos" role="button" tabindex="0" aria-label="Componente Residuos">
-                <div class="comp-card-top">
-                    <i class="fas fa-recycle comp-icon"></i>
-                    <h3>Residuos</h3>
-                </div>
-                <div class="comp-card-stats"></div>
+                <div class="comp-card-top"><i class="fas fa-recycle comp-icon"></i><h3>Residuos</h3></div><div class="comp-card-stats"></div>
             </div>
             <div class="comp-card card-suelo" role="button" tabindex="0" aria-label="Componente Suelo y Biodiversidad">
-                <div class="comp-card-top">
-                    <i class="fas fa-leaf comp-icon"></i>
-                    <h3>Suelo y Biodiversidad</h3>
-                </div>
-                <div class="comp-card-stats"></div>
+                <div class="comp-card-top"><i class="fas fa-leaf comp-icon"></i><h3>Suelo y Biodiversidad</h3></div><div class="comp-card-stats"></div>
             </div>
             <div class="comp-card card-quimico" role="button" tabindex="0" aria-label="Componente Riesgo Químico">
-                <div class="comp-card-top">
-                    <i class="fas fa-flask comp-icon"></i>
-                    <h3>Riesgo Químico</h3>
-                </div>
-                <div class="comp-card-stats"></div>
+                <div class="comp-card-top"><i class="fas fa-flask comp-icon"></i><h3>Riesgo Químico</h3></div><div class="comp-card-stats"></div>
             </div>
             <div class="comp-card card-contingencias" role="button" tabindex="0" aria-label="Componente Contingencias">
-                <div class="comp-card-top">
-                    <i class="fas fa-exclamation-triangle comp-icon"></i>
-                    <h3>Contingencias</h3>
-                </div>
-                <div class="comp-card-stats"></div>
+                <div class="comp-card-top"><i class="fas fa-exclamation-triangle comp-icon"></i><h3>Contingencias</h3></div><div class="comp-card-stats"></div>
             </div>
             <div class="comp-card card-otros" role="button" tabindex="0" aria-label="Componente Otros">
-                <div class="comp-card-top">
-                    <i class="fas fa-folder comp-icon"></i>
-                    <h3>Otros</h3>
-                </div>
-                <div class="comp-card-stats"></div>
+                <div class="comp-card-top"><i class="fas fa-folder comp-icon"></i><h3>Otros</h3></div><div class="comp-card-stats"></div>
             </div>
             <div class="comp-card card-gestion" role="button" tabindex="0" aria-label="Componente Mecanismos de Gestión">
-                <div class="comp-card-top">
-                    <i class="fas fa-clipboard-check comp-icon"></i>
-                    <h3>Mecanismos de Gestión</h3>
-                </div>
-                <div class="comp-card-stats"></div>
+                <div class="comp-card-top"><i class="fas fa-clipboard-check comp-icon"></i><h3>Mecanismos de Gestión</h3></div><div class="comp-card-stats"></div>
             </div>
         </section>
 
@@ -156,9 +116,7 @@
                  aria-label="Volver al panel central">
                 ← VOLVER AL PANEL CENTRAL
             </div>
-            <h2 style="text-align:center; color:#ffc107; letter-spacing:4px; margin-bottom:30px;">
-                DASHBOARD ESTRATÉGICO PREBEL
-            </h2>
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;"><div style="display:flex;align-items:center;gap:8px;"><div style="width:7px;height:7px;border-radius:50%;background:#07c092;"></div><span style="font-size:0.68rem;font-weight:600;color:#475569;letter-spacing:2px;text-transform:uppercase;">Prebel S.A.S BIC · Cumplimiento Ambiental</span></div><span style="font-size:0.65rem;color:#334155;" id="dashboard-fecha"></span></div>
             <div id="contenedor-kpis"
                  style="display:grid; grid-template-columns:repeat(auto-fit, minmax(320px,1fr)); gap:20px;">
             </div>
@@ -177,7 +135,7 @@
     <script src="https://www.gstatic.com/firebasejs/9.15.0/firebase-storage-compat.js"></script>
 
     <!-- Script principal (incluye toda la lógica y la inicialización de Firebase) -->
-    <script src="scriptml.js?v=6"></script>
+    <script src="scriptml.js"></script>
 
 </body>
 </html>
