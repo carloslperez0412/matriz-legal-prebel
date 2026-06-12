@@ -1246,15 +1246,11 @@ document.addEventListener('DOMContentLoaded', () => {
                         <input type="file" id="in-file-${hojaEsc}_${idx}" style="display:none;"
                                onchange="window.registrarArchivoIA('${hojaEsc}_${idx}')">
                     </button>
-                    <button id="btn-norma-${hojaEsc}_${idx}"
-                        onclick="window._verNorma('${hojaEsc}_${idx}')"
-                        style="display:none;align-items:center;gap:5px;
-                            background:rgba(7,192,146,0.1);color:#07c092;
-                            border:0.5px solid rgba(7,192,146,0.3);
-                            border-radius:6px;padding:5px 12px;
-                            font-size:0.62rem;font-weight:800;cursor:pointer;">
-                        <i class="fas fa-file-pdf" style="font-size:0.65rem;"></i> Ver norma
-                    </button>
+${(() => {
+                        const _m = JSON.parse(localStorage.getItem('prebel_normas_archivos')||'{}');
+                        const _k = Object.keys(_m).find(k => k === hojaEsc+'_'+idx || k.replace(/\\/g,'') === hojaEsc+'_'+idx);
+                        return _k ? '<button onclick="window._verNorma(\'' + _k + '\')" style="display:inline-flex;align-items:center;gap:5px;background:rgba(7,192,146,0.1);color:#07c092;border:0.5px solid rgba(7,192,146,0.3);border-radius:6px;padding:5px 12px;font-size:0.62rem;font-weight:800;cursor:pointer;"><i class=\"fas fa-file-pdf\" style=\"font-size:0.65rem;\"></i> Ver norma</button>' : '';
+                    })()}
                     <button
                         onclick="window._verDetalle('${hojaEsc}', ${idx})"
                         style="
