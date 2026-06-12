@@ -183,7 +183,14 @@ let datosMatrizGlobal = null;
 
 window._verNorma = (idUnico) => {
     const map = JSON.parse(localStorage.getItem('prebel_normas_archivos') || '{}');
-    const fi = map[idUnico];
+    // Try direct key first
+    let fi = map[idUnico];
+    // If not found, try unescaped version
+    if (!fi) {
+        const keys = Object.keys(map);
+        const match = keys.find(k => CSS.escape(k) === idUnico || k === idUnico);
+        if (match) fi = map[match];
+    }
     if (fi && fi.url) {
         window.open(fi.url, '_blank');
     } else {
@@ -194,9 +201,24 @@ window._verNorma = (idUnico) => {
 // Show Ver norma buttons for norms that have PDFs attached
 window._actualizarBotonesNorma = () => {
     const map = JSON.parse(localStorage.getItem('prebel_normas_archivos') || '{}');
-    Object.keys(map).forEach(idUnico => {
-        const btn = document.getElementById('btn-norma-' + idUnico);
-        if (btn) btn.style.display = 'inline-flex';
+    // Show buttons for all registered PDFs
+    document.querySelectorAll('[id^="btn-norma-"]').forEach(btn => {
+        const idUnico = btn.id.replace('btn-norma-', '');
+        // Check exact match or CSS-escaped version
+        if (map[idUnico]) {
+            btn.style.display = 'inline-flex';
+        }
+    });
+    // Also check if any key in map matches by comparing normalized versions
+    Object.keys(map).forEach(key => {
+        // Try direct
+        let btn = document.getElementById('btn-norma-' + key);
+        if (btn) { btn.style.display = 'inline-flex'; return; }
+        // Try CSS escaped version
+        try {
+            btn = document.getElementById('btn-norma-' + CSS.escape(key));
+            if (btn) btn.style.display = 'inline-flex';
+        } catch(e) {}
     });
 };
 
