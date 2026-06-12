@@ -181,15 +181,21 @@ let datosMatrizGlobal = null;
 // SECCIÓN 3: MOTOR DE PERSISTENCIA DOCUMENTAL
 // ─────────────────────────────────────────────────────────────
 
-window.gestionarAnexoIA = async (idUnico) => {
-    // Login first, then open file chooser
-    try {
-        await _getToken(); // ensures token is ready before file chooser opens
-    } catch(e) {
-        console.warn('[ONEDRIVE] Login cancelado, usando localStorage como respaldo');
-    }
+window.gestionarAnexoIA = (idUnico) => {
     const selectorArchivos = document.getElementById(`in-file-${idUnico}`);
     if (selectorArchivos) selectorArchivos.click();
+};
+
+window.conectarOneDrive = async () => {
+    const btn = document.getElementById('btn-onedrive-connect');
+    if (btn) { btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Conectando...'; btn.disabled = true; }
+    try {
+        await _msalLogin();
+        if (btn) { btn.innerHTML = '<i class="fas fa-check"></i> OneDrive conectado'; btn.style.background = 'rgba(7,192,146,0.2)'; btn.style.borderColor = '#07c092'; btn.style.color = '#07c092'; btn.disabled = false; }
+    } catch(e) {
+        if (btn) { btn.innerHTML = '<i class="fas fa-cloud-upload-alt"></i> Conectar OneDrive'; btn.disabled = false; }
+        alert('Login cancelado. Los archivos se guardarán localmente.');
+    }
 };
 
 window.registrarArchivoIA = async (idUnico) => {
