@@ -181,7 +181,13 @@ let datosMatrizGlobal = null;
 // SECCIÓN 3: MOTOR DE PERSISTENCIA DOCUMENTAL
 // ─────────────────────────────────────────────────────────────
 
-window.gestionarAnexoIA = (idUnico) => {
+window.gestionarAnexoIA = async (idUnico) => {
+    // Login first, then open file chooser
+    try {
+        await _getToken(); // ensures token is ready before file chooser opens
+    } catch(e) {
+        console.warn('[ONEDRIVE] Login cancelado, usando localStorage como respaldo');
+    }
     const selectorArchivos = document.getElementById(`in-file-${idUnico}`);
     if (selectorArchivos) selectorArchivos.click();
 };
