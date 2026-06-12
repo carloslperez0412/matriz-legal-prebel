@@ -46,7 +46,35 @@ const MSAL_CONFIG = {
 };
 
 let _msalToken = null;
-let _msalAccount = null;
+
+// Check if we have a valid token in sessionStorage
+function _loadTokenFromSession() {
+    const saved = sessionStorage.getItem('prebel_ms_token');
+    const exp = sessionStorage.getItem('prebel_ms_token_exp');
+    if (saved && exp && Date.now() < parseInt(exp)) {
+        _msalToken = saved;
+        return true;
+    }
+    return false;
+}
+_loadTokenFromSession();
+
+// Handle redirect: if we're coming back from Microsoft login
+(function _handleMsalRedirect() {
+    const hash = window.location.hash;
+    if (hash && hash.includes('access_token')) {
+        const params = new URLSearchParams(hash.substring(1));
+        const token = params.get('access_token');
+        const expiresIn = parseInt(params.get('expires_in') || '3600');
+        if (token) {
+            _msalToken = token;
+            sessionStorage.setItem('prebel_ms_token', token);
+            sessionStorage.setItem('prebel_ms_token_exp', Date.now() + expiresIn * 1000);
+            // Clean URL
+            history.replaceState(null, '', window.location.pathname);
+        }
+    }
+})();
 
 async function _msalLogin() {
     return new Promise((resolve, reject) => {
@@ -59,6 +87,12 @@ async function _msalLogin() {
             + '&nonce=' + Math.random().toString(36).substr(2);
 
         const popup = window.open(authUrl, 'msalLogin', 'width=500,height=600,top=100,left=100');
+        if (!popup) {
+            // Popup blocked - redirect instead
+            sessionStorage.setItem('prebel_pending_action', 'true');
+            window.location.href = authUrl;
+            return;
+        }
         const timer = setInterval(() => {
             try {
                 if (popup.closed) { clearInterval(timer); reject(new Error('Login cancelado')); return; }
@@ -67,8 +101,12 @@ async function _msalLogin() {
                     clearInterval(timer);
                     popup.close();
                     const params = new URLSearchParams(hash.substring(1));
-                    _msalToken = params.get('access_token');
-                    resolve(_msalToken);
+                    const token = params.get('access_token');
+                    const expiresIn = parseInt(params.get('expires_in') || '3600');
+                    _msalToken = token;
+                    sessionStorage.setItem('prebel_ms_token', token);
+                    sessionStorage.setItem('prebel_ms_token_exp', Date.now() + expiresIn * 1000);
+                    resolve(token);
                 }
             } catch(e) { /* cross-origin, esperar */ }
         }, 500);
@@ -77,6 +115,7 @@ async function _msalLogin() {
 
 async function _getToken() {
     if (_msalToken) return _msalToken;
+    if (_loadTokenFromSession()) return _msalToken;
     return await _msalLogin();
 }
 
