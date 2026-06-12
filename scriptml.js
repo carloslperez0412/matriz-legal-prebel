@@ -201,24 +201,11 @@ window._verNorma = (idUnico) => {
 // Show Ver norma buttons for norms that have PDFs attached
 window._actualizarBotonesNorma = () => {
     const map = JSON.parse(localStorage.getItem('prebel_normas_archivos') || '{}');
-    // Show buttons for all registered PDFs
-    document.querySelectorAll('[id^="btn-norma-"]').forEach(btn => {
-        const idUnico = btn.id.replace('btn-norma-', '');
-        // Check exact match or CSS-escaped version
-        if (map[idUnico]) {
-            btn.style.display = 'inline-flex';
-        }
-    });
-    // Also check if any key in map matches by comparing normalized versions
     Object.keys(map).forEach(key => {
-        // Try direct
-        let btn = document.getElementById('btn-norma-' + key);
-        if (btn) { btn.style.display = 'inline-flex'; return; }
-        // Try CSS escaped version
-        try {
-            btn = document.getElementById('btn-norma-' + CSS.escape(key));
-            if (btn) btn.style.display = 'inline-flex';
-        } catch(e) {}
+        const slot = document.getElementById('norma-btn-slot-' + key);
+        if (slot && !slot.querySelector('button')) {
+            slot.innerHTML = '<button onclick="window._verNorma(\'' + key + '\')" style="display:inline-flex;align-items:center;gap:5px;background:rgba(7,192,146,0.1);color:#07c092;border:0.5px solid rgba(7,192,146,0.3);border-radius:6px;padding:5px 12px;font-size:0.62rem;font-weight:800;cursor:pointer;margin-left:4px;"><i class="fas fa-file-pdf" style="font-size:0.65rem;margin-right:3px;"></i>Ver norma</button>';
+        }
     });
 };
 
@@ -1246,11 +1233,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         <input type="file" id="in-file-${hojaEsc}_${idx}" style="display:none;"
                                onchange="window.registrarArchivoIA('${hojaEsc}_${idx}')">
                     </button>
-${(() => {
-                        const _m = JSON.parse(localStorage.getItem('prebel_normas_archivos')||'{}');
-                        const _k = Object.keys(_m).find(k => k === hojaEsc+'_'+idx || k.replace(/\\/g,'') === hojaEsc+'_'+idx);
-                        return _k ? '<button onclick="window._verNorma(\'' + _k + '\')" style="display:inline-flex;align-items:center;gap:5px;background:rgba(7,192,146,0.1);color:#07c092;border:0.5px solid rgba(7,192,146,0.3);border-radius:6px;padding:5px 12px;font-size:0.62rem;font-weight:800;cursor:pointer;"><i class=\"fas fa-file-pdf\" style=\"font-size:0.65rem;\"></i> Ver norma</button>' : '';
-                    })()}
+<span id="norma-btn-slot-${hojaEsc}_${idx}"></span>
                     <button
                         onclick="window._verDetalle('${hojaEsc}', ${idx})"
                         style="
