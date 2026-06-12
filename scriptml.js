@@ -30,10 +30,83 @@ const PREBEL_CONFIG = {
         appId: "1:638026922523:web:19897537d20b692d2f16be"
     },
     historicoCumplimiento: {
-        global: [87.5, 88.2, 88.0, 88.5, 88.6, null],
-        meses:  ['OCT 25', 'NOV 25', 'DIC 25', 'ENE 26', 'FEB 26', 'MAR 26']
+        global: [87.5, 88.2, 88.0, 88.5, 88.6, 100.0],
+        meses:  ['Ene 26', 'Feb 26', 'Mar 26', 'Abr 26', 'May 26', 'Jun 26']
     }
 };
+
+// ─────────────────────────────────────────────────────────────
+// SECCIÓN: MICROSOFT ONEDRIVE (MSAL + Graph API)
+// ─────────────────────────────────────────────────────────────
+
+const MSAL_CONFIG = {
+    clientId: '749a4f37-b73d-49c3-a8b7-96cf85ed6f5e',
+    tenantId: '2213d7a7-e202-4bcd-a275-5e7f63ed8032',
+    scopes: ['Files.ReadWrite', 'User.Read']
+};
+
+let _msalToken = null;
+let _msalAccount = null;
+
+async function _msalLogin() {
+    return new Promise((resolve, reject) => {
+        const authUrl = 'https://login.microsoftonline.com/' + MSAL_CONFIG.tenantId
+            + '/oauth2/v2.0/authorize?client_id=' + MSAL_CONFIG.clientId
+            + '&response_type=token'
+            + '&redirect_uri=' + encodeURIComponent('https://carloslperez0412.github.io/matriz-legal-prebel/indexml.html')
+            + '&scope=' + encodeURIComponent(MSAL_CONFIG.scopes.join(' '))
+            + '&response_mode=fragment'
+            + '&nonce=' + Math.random().toString(36).substr(2);
+
+        const popup = window.open(authUrl, 'msalLogin', 'width=500,height=600,top=100,left=100');
+        const timer = setInterval(() => {
+            try {
+                if (popup.closed) { clearInterval(timer); reject(new Error('Login cancelado')); return; }
+                const hash = popup.location.hash;
+                if (hash && hash.includes('access_token')) {
+                    clearInterval(timer);
+                    popup.close();
+                    const params = new URLSearchParams(hash.substring(1));
+                    _msalToken = params.get('access_token');
+                    resolve(_msalToken);
+                }
+            } catch(e) { /* cross-origin, esperar */ }
+        }, 500);
+    });
+}
+
+async function _getToken() {
+    if (_msalToken) return _msalToken;
+    return await _msalLogin();
+}
+
+async function _subirArchivoOneDrive(file, normaId) {
+    const token = await _getToken();
+    const folder = 'MatrizLegalAmbiental/Normas';
+    const fileName = normaId.replace(/[^a-zA-Z0-9]/g, '_') + '_' + file.name;
+    const uploadUrl = 'https://graph.microsoft.com/v1.0/me/drive/root:/' + folder + '/' + fileName + ':/content';
+
+    const res = await fetch(uploadUrl, {
+        method: 'PUT',
+        headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': file.type || 'application/pdf' },
+        body: file
+    });
+    if (!res.ok) throw new Error('Error subiendo archivo: ' + res.status);
+    const data = await res.json();
+    return { id: data.id, name: data.name, url: data.webUrl, downloadUrl: data['@microsoft.graph.downloadUrl'] };
+}
+
+async function _obtenerArchivoOneDrive(normaId) {
+    // Check localStorage for file mapping
+    const map = JSON.parse(localStorage.getItem('prebel_normas_archivos') || '{}');
+    return map[normaId] || null;
+}
+
+async function _guardarMapeoArchivo(normaId, fileInfo) {
+    const map = JSON.parse(localStorage.getItem('prebel_normas_archivos') || '{}');
+    map[normaId] = fileInfo;
+    localStorage.setItem('prebel_normas_archivos', JSON.stringify(map));
+}
 
 // ─────────────────────────────────────────────────────────────
 // SECCIÓN 1: INICIALIZACIÓN FIREBASE (UNA SOLA VEZ)
@@ -75,44 +148,37 @@ window.gestionarAnexoIA = (idUnico) => {
 };
 
 window.registrarArchivoIA = async (idUnico) => {
-    const input     = document.getElementById(`in-file-${idUnico}`);
-    const etiqueta  = document.getElementById(`label-file-${idUnico}`);
+    const input = document.getElementById(`in-file-${idUnico}`);
+    const etiqueta = document.getElementById(`label-file-${idUnico}`);
     const botonDescarga = document.getElementById(`btn-down-${idUnico}`);
 
     if (!input || !input.files.length) return;
     const archivo = input.files[0];
 
-    if (archivo.size > 20 * 1024 * 1024) {
-        alert("El archivo supera el límite de 20 MB.");
+    if (archivo.size > 50 * 1024 * 1024) {
+        alert("El archivo supera el límite de 50 MB.");
         return;
     }
 
     if (etiqueta) {
-        etiqueta.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Cargando...`;
+        etiqueta.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Subiendo a OneDrive...`;
         etiqueta.style.color = "#ffc107";
     }
 
-    if (firebaseReady && storage) {
-        try {
-            const refCloud = storage.ref(`soportes_prebel/${idUnico}_${archivo.name}`);
-            const task     = await refCloud.put(archivo);
-            const url      = await task.ref.getDownloadURL();
-
-            await db.collection("evidencias").doc(idUnico).set({
-                nombre: archivo.name,
-                url:    url,
-                fecha:  new Date().toISOString()
-            });
-
-            _actualizarUIAnexo(etiqueta, botonDescarga, archivo.name, '#00ff80');
-            console.log("[NUBE] Soporte sincronizado:", archivo.name);
-            return;
-        } catch (e) {
-            console.warn("[NUBE] Fallo al subir. Guardando localmente...", e);
+    try {
+        const fileInfo = await _subirArchivoOneDrive(archivo, idUnico);
+        await _guardarMapeoArchivo(idUnico, fileInfo);
+        _actualizarUIAnexo(etiqueta, botonDescarga, archivo.name, '#07c092');
+        console.log("[ONEDRIVE] Archivo subido:", fileInfo.url);
+    } catch (e) {
+        console.warn("[ONEDRIVE] Error:", e.message);
+        if (etiqueta) {
+            etiqueta.innerHTML = `<i class="fas fa-exclamation-circle"></i> Error: ${e.message}`;
+            etiqueta.style.color = "#E24B4A";
         }
+        // Fallback to localStorage
+        _guardarEnLocalStorage(idUnico, archivo, etiqueta, botonDescarga);
     }
-
-    _guardarEnLocalStorage(idUnico, archivo, etiqueta, botonDescarga);
 };
 
 function _guardarEnLocalStorage(idUnico, archivo, etiqueta, botonDescarga) {
@@ -152,30 +218,23 @@ function _actualizarUIAnexo(etiqueta, botonDescarga, nombreArchivo, color) {
 }
 
 window.descargarAnexoIA = async (idUnico) => {
-    if (firebaseReady && db) {
-        try {
-            const doc = await db.collection("evidencias").doc(idUnico).get();
-            if (doc.exists) {
-                window.open(doc.data().url, '_blank');
-                return;
-            }
-        } catch (e) {
-            console.warn("[NUBE] No se pudo obtener desde Firebase:", e);
-        }
+    // Try OneDrive first
+    const fileInfo = await _obtenerArchivoOneDrive(idUnico);
+    if (fileInfo && fileInfo.url) {
+        window.open(fileInfo.url, '_blank');
+        return;
     }
-
-    const nombre    = localStorage.getItem(`prebel_filename_${idUnico}`);
+    // Fallback to localStorage
+    const nombre = localStorage.getItem(`prebel_filename_${idUnico}`);
     const contenido = localStorage.getItem(`prebel_filedata_${idUnico}`);
     if (nombre && contenido) {
-        const link = document.createElement("a");
-        link.href = contenido;
-        link.download = nombre;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-    } else {
-        alert("No se encontró ningún archivo cargado para esta evidencia.");
+        const a = document.createElement('a');
+        a.href = contenido;
+        a.download = nombre;
+        a.click();
+        return;
     }
+    alert('No se encontró el archivo adjunto. Por favor adjúntalo nuevamente.');
 };
 
 // ─────────────────────────────────────────────────────────────
@@ -229,7 +288,10 @@ const validarCumplimiento = (valor) => {
     if (valor === undefined || valor === null || valor === "") return false;
     if (valor === 1 || valor === 1.0 || valor === true) return true;
     const v = valor.toString().trim().toLowerCase();
-    return v === "1" || v === "1.0" || v === "si" || v === "sí";
+    return v === "1" || v === "1.0" || v === "si" || v === "sí"
+        || v === "n/a" || v === "na"
+        || v.includes("no es de obligatorio cumplimiento")
+        || v.includes("no aplica");
 };
 
 // ─────────────────────────────────────────────────────────────
@@ -305,6 +367,9 @@ function actualizarPanelInicio() {
             card.style.background = '';
             const icono = card.querySelector('.comp-icon');
             if (icono) icono.style.color = '#334155';
+            // Remove wave if exists
+            const oldWave = card.querySelector('.card-wave');
+            if (oldWave) oldWave.remove();
             return;
         }
 
@@ -326,6 +391,19 @@ function actualizarPanelInicio() {
         // Ícono
         const icono = card.querySelector('.comp-icon');
         if (icono) icono.style.color = color;
+
+
+        // Onda decorativa al fondo de la tarjeta
+        const oldWave = card.querySelector('.card-wave');
+        if (oldWave) oldWave.remove();
+        const waveEl = document.createElement('div');
+        waveEl.className = 'card-wave';
+        waveEl.style.cssText = 'width:100%;margin-top:8px;line-height:0;border-radius:0 0 8px 8px;overflow:hidden;';
+        waveEl.innerHTML = `<svg viewBox="0 0 400 35" preserveAspectRatio="none" style="width:100%;height:28px;display:block;">
+            <path d="M0,20 C80,4 160,32 240,18 C320,4 360,26 400,15 L400,35 L0,35 Z" fill="${color}" opacity="0.12"/>
+            <path d="M0,26 C100,12 200,32 300,22 C360,14 385,26 400,22 L400,35 L0,35 Z" fill="${color}" opacity="0.07"/>
+            </svg>`;
+        card.appendChild(waveEl);
 
         // Badge estado
         const estadoBadge = noCumple > 0
@@ -1242,24 +1320,64 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // ── SVG Anillo ICLA ───────────────────────────────────────
     const crearAnilloSVG = (p) => {
-        const radio = 70;
+        const radio = 58;
         const circ  = 2 * Math.PI * radio;
-        const offset = circ - (p / 100) * circ;
         const color = p >= 90 ? '#07c092' : p >= 70 ? '#ffc107' : '#ff3b30';
+        const uid = 'icla_' + Date.now();
+        setTimeout(() => {
+            const el = document.getElementById(uid);
+            if (!el) return;
+            const duration = 2000;
+            const start = performance.now();
+            function tick(now) {
+                const elapsed = now - start;
+                const progress = Math.min(elapsed / duration, 1);
+                const ease = 1 - Math.pow(1 - progress, 3);
+                const current = Math.round(ease * p * 10) / 10;
+                el.textContent = current.toFixed(1) + '%';
+                if (progress < 1) requestAnimationFrame(tick);
+                else el.textContent = p + '%';
+            }
+            requestAnimationFrame(tick);
+        }, 100);
         return `
-            <div style="position:relative; width:160px; height:160px; margin:0 auto 15px;">
-                <svg width="160" height="160" style="transform:rotate(-90deg);">
-                    <circle cx="80" cy="80" r="${radio}" fill="transparent"
-                            stroke="rgba(255,255,255,0.05)" stroke-width="12"/>
-                    <circle cx="80" cy="80" r="${radio}" fill="transparent"
-                            stroke="${color}" stroke-width="12"
-                            stroke-dasharray="${circ}" stroke-dashoffset="${offset}"
-                            stroke-linecap="round"
-                            style="transition:stroke-dashoffset 1.5s ease-out;"/>
+            <div style="position:relative; width:180px; height:180px; margin:0 auto 15px;">
+                <style>
+                    @keyframes iclaDrawIn {
+                        from { stroke-dashoffset: ${circ}; }
+                        to   { stroke-dashoffset: 0; }
+                    }
+                    @keyframes iclaFadeUp {
+                        from { opacity:0; transform:translate(-50%,-50%) translateY(8px); }
+                        to   { opacity:1; transform:translate(-50%,-50%) translateY(0); }
+                    }
+                    @keyframes iclaRipple {
+                        0%   { r: ${radio}; opacity: 0.5; }
+                        100% { r: ${radio + 22}; opacity: 0; }
+                    }
+                </style>
+                <svg width="180" height="180" style="position:absolute;inset:0;overflow:visible;">
+                    <circle cx="90" cy="90" r="${radio}" fill="none" stroke="${color}" stroke-width="1.5"
+                        style="animation: iclaRipple 2.5s ease-out 2s infinite;"/>
+                    <circle cx="90" cy="90" r="${radio}" fill="none" stroke="${color}" stroke-width="1"
+                        style="animation: iclaRipple 2.5s ease-out 2.8s infinite;"/>
+                    <circle cx="90" cy="90" r="${radio}" fill="none" stroke="${color}" stroke-width="0.5"
+                        style="animation: iclaRipple 2.5s ease-out 3.6s infinite;"/>
                 </svg>
-                <div style="position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); text-align:center;">
-                    <span style="font-size:2.5rem; font-weight:800; color:#fff; display:block; line-height:1;">${p}%</span>
-                    <span style="font-size:0.6rem; color:${color}; letter-spacing:2px; font-weight:800;">ICLA</span>
+                <svg width="180" height="180" style="transform:rotate(-90deg);position:absolute;inset:0;">
+                    <circle cx="90" cy="90" r="${radio}" fill="transparent"
+                            stroke="rgba(255,255,255,0.05)" stroke-width="10"/>
+                    <circle cx="90" cy="90" r="${radio}" fill="transparent"
+                            stroke="${color}" stroke-width="10"
+                            stroke-dasharray="${circ}" stroke-dashoffset="${circ}"
+                            stroke-linecap="round"
+                            style="animation: iclaDrawIn 2s cubic-bezier(0.4,0,0.2,1) forwards;"/>
+                </svg>
+                <div style="position:absolute; top:50%; left:50%;
+                            animation: iclaFadeUp 0.6s ease 0.3s both;
+                            text-align:center;">
+                    <span id="${uid}" style="font-size:2.2rem; font-weight:700; color:#fff; display:block; line-height:1;">0%</span>
+                    <span style="font-size:0.6rem; color:${color}; letter-spacing:2px; font-weight:700;">ICLA</span>
                 </div>
             </div>`;
     };
@@ -1415,13 +1533,15 @@ Para cada norma encontrada indica: nombre/número, fecha, autoridad emisora, por
         const hoy = new Date();
 
         const botonesSlim = [
-            { n: "Agua",                  i: "fa-tint",           c: "#00f3ff" },
-            { n: "Aire",                  i: "fa-wind",           c: "#ffffff" },
-            { n: "Energía y combustibles",i: "fa-bolt",           c: "#ffe031" },
-            { n: "Residuos",              i: "fa-trash-alt",      c: "#bf5af2" },
-            { n: "Suelo y Biodiversidad", i: "fa-leaf",           c: "#00ff80" },
-            { n: "Contingencias",         i: "fa-biohazard",      c: "#ff3b30" },
-            { n: "Mecanismos de Gestión", i: "fa-clipboard-check",c: "#07c092" }
+            { n: "Agua",                  i: "fa-tint",           c: "#38bdf8" },
+            { n: "Aire",                  i: "fa-wind",           c: "#cbd5e1" },
+            { n: "Energía y combustibles",i: "fa-bolt",           c: "#fb923c" },
+            { n: "Residuos",              i: "fa-recycle",        c: "#a78bfa" },
+            { n: "Suelo y Biodiversidad", i: "fa-leaf",           c: "#4ade80" },
+            { n: "Riesgo Químico",        i: "fa-flask",          c: "#f472b6" },
+            { n: "Contingencias",         i: "fa-exclamation-triangle", c: "#ef4444" },
+            { n: "Otros",                 i: "fa-folder",         c: "#facc15" },
+            { n: "Mecanismos de Gestión", i: "fa-clipboard-check",c: "#2dd4bf" }
         ];
 
         botonesSlim.forEach(b => {
@@ -1447,7 +1567,8 @@ Para cada norma encontrada indica: nombre/número, fecha, autoridad emisora, por
                         if (colF && f[colF]) {
                             let fn = f[colF] instanceof Date ? f[colF] : new Date(f[colF]);
                             if (!isNaN(fn) && (hoy - fn) / (1000 * 86400) > 365) {
-                                vigilanciaStack.push({ c: b.n, n: f["Norma Legal"] || "S/N" });
+                                const _fechaVig = f[colF] instanceof Date ? f[colF] : new Date(f[colF]);
+                                vigilanciaStack.push({ c: b.n, n: f["Norma Legal"] || "S/N", fecha: _fechaVig.toLocaleDateString("es-CO",{day:"2-digit",month:"2-digit",year:"numeric"}), dias: Math.floor((hoy - _fechaVig)/(1000*86400)), sede: f["Sede"] || "", tema: f["Tema"] || "", objeto: f["Objeto"] || "", evidencia: f["Evidencia de cumplimiento"] || "", observacion: f["Obervación"] || f["Observación"] || "", exigencia: f["Exigencia"] || "", color: b.c });
                             }
                         }
                     }
@@ -1455,23 +1576,36 @@ Para cada norma encontrada indica: nombre/número, fecha, autoridad emisora, por
             }
             const p = (siH + noH) > 0 ? ((siH / (siH + noH)) * 100).toFixed(1) : 0;
             htmlBarras += `
-                <div onclick="window.navDirecta(event, '${b.n}')" style="margin-bottom:18px; cursor:pointer;">
-                    <div style="display:flex; justify-content:space-between; font-size:0.65rem; color:#cbd5e1; margin-bottom:6px; font-weight:700;">
-                        <span>${b.n.toUpperCase()}</span>
+                <div onclick="window.navDirecta(event, '${b.n}')" style="margin-bottom:10px; cursor:pointer;">
+                    <div style="display:flex; justify-content:space-between; font-size:0.62rem; margin-bottom:3px;">
+                        <span style="color:#475569;">${b.n}</span>
                         <span style="color:${b.c};">${p}%</span>
                     </div>
-                    <div style="width:100%; background:rgba(0,0,0,0.4); height:5px; border-radius:10px; overflow:hidden;">
-                        <div style="width:${p}%; background:${b.c}; height:100%; box-shadow:0 0 8px ${b.c}44;"></div>
+                    <div style="width:100%; background:rgba(255,255,255,0.05); height:6px; border-radius:99px; overflow:hidden;">
+                        <div style="width:${p}%; background:${b.c}; height:100%; border-radius:99px; transform-origin:left; animation: monBarFill 1s cubic-bezier(0.4,0,0.2,1) both; animation-delay: ${botonesSlim.indexOf(b) * 0.1}s;"></div>
                     </div>
                 </div>`;
         });
 
+        window._vigStack = vigilanciaStack;
         const global = tReg > 0 ? ((tSi / tReg) * 100).toFixed(1) : 0;
 
-        const histTotal = [...PREBEL_CONFIG.historicoCumplimiento.global];
-        histTotal[histTotal.length - 1] = parseFloat(global);
-
-        const mesesCentral = PREBEL_CONFIG.historicoCumplimiento.meses;
+        // Cargar historial real desde localStorage
+        const _histGuardado = JSON.parse(localStorage.getItem('prebel_hist_revisiones') || '[]');
+        let histTotal, mesesCentral;
+        if (_histGuardado.length > 0) {
+            histTotal = _histGuardado.map(h => parseFloat(h.pct));
+            mesesCentral = _histGuardado.map(h => h.mes);
+            // Actualizar el último con el valor actual si es el mismo mes
+            const _mesActual = (() => { const d = new Date(); const mm = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic']; return mm[d.getMonth()] + ' ' + String(d.getFullYear()).slice(2); })();
+            if (mesesCentral[mesesCentral.length-1] === _mesActual) {
+                histTotal[histTotal.length-1] = parseFloat(global);
+            }
+        } else {
+            histTotal = [...PREBEL_CONFIG.historicoCumplimiento.global];
+            histTotal[histTotal.length - 1] = parseFloat(global);
+            mesesCentral = PREBEL_CONFIG.historicoCumplimiento.meses;
+        }
         const ptsGlobal = histTotal.map((v, i) =>
             `${i * 120},${100 - ((v - 80) / 20 * 100)}`
         ).join(' ');
@@ -1488,11 +1622,12 @@ Para cada norma encontrada indica: nombre/número, fecha, autoridad emisora, por
                 </g>`;
         }).join('');
 
+        if (!document.getElementById("monbar-style")) { const _s = document.createElement("style"); _s.id = "monbar-style"; _s.textContent = "@keyframes monBarFill { from { opacity:0; transform: scaleX(0.3); } to { opacity:1; transform: scaleX(1); } }"; document.head.appendChild(_s); }
         const statsCards = [
-            { label: "TOTAL REQUISITOS", valor: tReg,  color: "#00f3ff", icono: "fa-list-check" },
-            { label: "CUMPLIDOS",         valor: tSi,   color: "#00ff80", icono: "fa-check-double" },
-            { label: "NO CUMPLIDOS",      valor: tNo,   color: "#ff3b30", icono: "fa-triangle-exclamation" },
-            { label: "EN VIGILANCIA",     valor: vigilanciaStack.length, color: "#ffe031", icono: "fa-clock-rotate-left" }
+            { label: "TOTAL REQUISITOS", valor: tReg,  color: "#64748b", icono: "fa-layer-group" },
+            { label: "CUMPLIDOS",         valor: tSi,   color: "#07c092", icono: "fa-check" },
+            { label: "NO CUMPLIDOS",      valor: tNo,   color: "#E24B4A", icono: "fa-times" },
+            { label: "EN VIGILANCIA",     valor: vigilanciaStack.length, color: "#BA7517", icono: "fa-clock" }
         ];
 
         contenedorKpis.innerHTML = `
@@ -1501,24 +1636,17 @@ Para cada norma encontrada indica: nombre/número, fecha, autoridad emisora, por
 
                 <div style="grid-column:span 12; display:grid; grid-template-columns:repeat(4,1fr); gap:15px; margin-bottom:5px;">
                     ${statsCards.map(s => `
-                        <div style="background:rgba(15,23,42,0.7); border:1px solid rgba(255,255,255,0.06);
-                             border-top:3px solid ${s.color}; border-radius:12px; padding:20px 25px;
-                             display:flex; align-items:center; gap:15px;">
-                            <i class="fas ${s.icono}" style="font-size:1.5rem; color:${s.color}; opacity:0.8;"></i>
+                        <div style="background:rgba(15,23,42,0.6); border:0.5px solid rgba(255,255,255,0.06); border-radius:10px; padding:16px 18px; display:flex; align-items:center; gap:14px;">
+                            <div style="width:32px;height:32px;border-radius:8px;background:rgba(255,255,255,0.04);display:flex;align-items:center;justify-content:center;flex-shrink:0;"><i class="fas ${s.icono}" style="font-size:13px;color:${s.color};"></i></div>
                             <div>
-                                <div style="font-size:1.8rem; font-weight:900; color:#fff; line-height:1;">${s.valor}</div>
-                                <div style="font-size:0.55rem; color:#64748b; font-weight:800; letter-spacing:2px; margin-top:3px;">${s.label}</div>
+                                <div style="font-size:22px; font-weight:700; color:${s.color}; line-height:1;">${s.valor}</div>
+                                <div style="font-size:9px; color:#475569; font-weight:500; letter-spacing:0.5px; margin-top:4px; text-transform:uppercase;">${s.label}</div>
                             </div>
                         </div>`).join('')}
                 </div>
 
                 <div style="grid-column:span 3; display:flex; flex-direction:column; gap:20px;">
-                    <div style="background:rgba(15,23,42,0.85); padding:30px; border-radius:16px;
-                         border:1px solid rgba(255,255,255,0.08); text-align:center;">
-                        ${crearAnilloSVG(global)}
-                        <h3 style="font-size:0.7rem; color:#94a3b8; letter-spacing:2px; font-weight:800;">ICLA ACTUAL</h3>
-                        <p style="font-size:0.6rem; color:#475569; margin-top:5px;">${tReg} requisitos evaluados</p>
-                    </div>
+                    <div style="background:rgba(15,23,42,0.85); padding:30px; border-radius:16px; border:1px solid rgba(255,255,255,0.08); text-align:center; position:relative; overflow:hidden;"><svg style="position:absolute;bottom:0;left:0;width:100%;opacity:0.07;pointer-events:none;" viewBox="0 0 400 80" preserveAspectRatio="none"><path d="M0,40 C80,10 160,70 240,40 C320,10 360,60 400,40 L400,80 L0,80 Z" fill="#07c092"/><path d="M0,55 C100,30 200,70 300,45 C360,28 385,55 400,50 L400,80 L0,80 Z" fill="#38bdf8"/></svg><div style="position:relative;z-index:1;">${crearAnilloSVG(global)}<h3 style="font-size:0.7rem; color:#94a3b8; letter-spacing:2px; font-weight:800;">ICLA ACTUAL</h3><p style="font-size:0.6rem; color:#475569; margin-top:5px;">${tReg} requisitos evaluados</p></div></div>
                     <div style="background:rgba(15,23,42,0.85); padding:25px; border-radius:16px;
                          border-left:5px solid #ff3b30; border:1px solid rgba(255,255,255,0.08); flex-grow:1;">
                         <h3 style="font-size:0.75rem; color:#ff3b30; margin-bottom:12px; font-weight:900;">
@@ -1531,78 +1659,120 @@ Para cada norma encontrada indica: nombre/número, fecha, autoridad emisora, por
                 </div>
 
                 <div style="grid-column:span 6; background:rgba(15,23,42,0.85); padding:30px;
-                     border-radius:16px; border:1px solid rgba(255,255,255,0.08);">
+                     border-radius:16px; border:1px solid rgba(255,255,255,0.08); overflow:hidden; position:relative;">
                     <h3 style="font-size:0.8rem; color:#94a3b8; margin-bottom:30px; text-align:center;
                          letter-spacing:4px; font-weight:900;">MONITOR OPERATIVO</h3>
-                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:25px;">${htmlBarras}</div>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:25px;">${htmlBarras}</div><div style="position:absolute;bottom:0;left:0;right:0;height:90px;display:flex;align-items:flex-end;gap:3px;padding:0 30px;opacity:0.08;pointer-events:none;"><div style="flex:1;height:30%;background:#07c092;border-radius:2px 2px 0 0;"></div><div style="flex:1;height:55%;background:#07c092;border-radius:2px 2px 0 0;"></div><div style="flex:1;height:40%;background:#07c092;border-radius:2px 2px 0 0;"></div><div style="flex:1;height:70%;background:#07c092;border-radius:2px 2px 0 0;"></div><div style="flex:1;height:45%;background:#07c092;border-radius:2px 2px 0 0;"></div><div style="flex:1;height:85%;background:#07c092;border-radius:2px 2px 0 0;"></div><div style="flex:1;height:60%;background:#07c092;border-radius:2px 2px 0 0;"></div><div style="flex:1;height:95%;background:#07c092;border-radius:2px 2px 0 0;"></div><div style="flex:1;height:50%;background:#07c092;border-radius:2px 2px 0 0;"></div><div style="flex:1;height:75%;background:#07c092;border-radius:2px 2px 0 0;"></div><div style="flex:1;height:35%;background:#07c092;border-radius:2px 2px 0 0;"></div><div style="flex:1;height:90%;background:#07c092;border-radius:2px 2px 0 0;"></div><div style="flex:1;height:65%;background:#07c092;border-radius:2px 2px 0 0;"></div><div style="flex:1;height:100%;background:#07c092;border-radius:2px 2px 0 0;"></div><div style="flex:1;height:48%;background:#07c092;border-radius:2px 2px 0 0;"></div><div style="flex:1;height:80%;background:#07c092;border-radius:2px 2px 0 0;"></div></div>
                 </div>
 
                 <div style="grid-column:span 3; display:flex; flex-direction:column; gap:20px;">
-                    <div style="background:rgba(15,23,42,0.85); padding:25px; border-radius:16px;
-                         border-top:4px solid #ffe031; border:1px solid rgba(255,255,255,0.08);">
-                        <h3 style="font-size:0.75rem; color:#ffe031; margin-bottom:12px; font-weight:900;">
-                            🕐 VIGILANCIA (${vigilanciaStack.length})
-                        </h3>
-                        <div style="max-height:160px; overflow-y:auto;">
+                    <div onclick="window._abrirModalVigilancia()" style="background:#060e1f;border:0.5px solid rgba(255,255,255,0.06);border-radius:12px;padding:14px;cursor:pointer;transition:border-color 0.2s,background 0.2s;"
+                         onmouseover="this.style.borderColor='rgba(186,117,23,0.4)';this.style.background='rgba(186,117,23,0.04)'"
+                         onmouseout="this.style.borderColor='rgba(255,255,255,0.06)';this.style.background='#060e1f'">
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+                            <span style="font-size:8px;color:#334155;text-transform:uppercase;letter-spacing:1.5px;font-weight:600;">Vigilancia</span>
+                            <span style="font-size:13px;font-weight:700;color:#BA7517;">${vigilanciaStack.length}</span>
+                        </div>
+                        <div style="display:flex;flex-direction:column;gap:0;">
                             ${vigilanciaStack.length
-                                ? vigilanciaStack.slice(0, 6).map(v => `
-                                    <div style="font-size:0.65rem; color:#94a3b8; padding:6px 0;
-                                         border-bottom:1px solid rgba(255,255,255,0.03);">
-                                        <b style="color:#ffe031;">[${v.c}]</b> ${v.n}
-                                    </div>`).join('')
-                                : '<p style="color:#475569; font-size:0.65rem;">Sin normas vencidas.</p>'
+                                ? vigilanciaStack.slice(0,5).map(v => '<div style="padding:5px 0;border-bottom:0.5px solid rgba(255,255,255,0.04);display:flex;align-items:flex-start;gap:5px;"><span style="font-size:8px;font-weight:600;color:#854F0B;background:rgba(186,117,23,0.15);padding:1px 5px;border-radius:3px;flex-shrink:0;">' + v.c + '</span><span style="font-size:9px;color:#334155;">' + v.n + '</span></div>').join('')
+                                : '<p style="font-size:9px;color:#1e293b;">Sin normas en vigilancia.</p>'
                             }
                         </div>
-                    </div>
-                    <div style="background:linear-gradient(145deg,#0d0221,#1a0230); padding:25px;
-                         border-radius:16px; border:1px solid rgba(255,255,255,0.08); border-top:4px solid #00f3ff;">
-                        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
-                            <i class="fas fa-robot" style="color:#00f3ff;font-size:1rem;"></i>
-                            <h3 style="font-size:0.85rem;color:#00f3ff;margin:0;font-weight:900;">AGENTE IA</h3>
+                        <div style="display:flex;align-items:center;justify-content:center;margin-top:10px;border-top:0.5px solid rgba(255,255,255,0.04);padding-top:8px;">
+                            <span style="font-size:8px;color:#1e293b;">↗ Ver todas las normas</span>
                         </div>
-                        <p style="font-size:0.6rem;color:#475569;margin:0 0 14px;line-height:1.5;">
-                            Busca normativa ambiental nueva en Minambiente, AMVA, CORNARE, IDEAM y ANLA.
+                    </div>
+                    <div style="background:#060e1f; padding:20px; border-radius:12px; border:0.5px solid rgba(255,255,255,0.06);">
+                        <style>
+                            @keyframes aiPulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.3;transform:scale(1.12)} }
+                            @keyframes aiDotBlink { 0%,100%{opacity:1} 50%{opacity:0.4} }
+                            .ai-ring-widget { width:26px;height:26px;border-radius:50%;border:1.5px solid #07c092;display:flex;align-items:center;justify-content:center;position:relative;flex-shrink:0; }
+                            .ai-ring-widget::before { content:'';position:absolute;inset:-4px;border-radius:50%;border:1px solid rgba(7,192,146,0.2);animation:aiPulse 2s ease-in-out infinite; }
+                            .ai-dot-widget { width:7px;height:7px;border-radius:50%;background:#07c092;animation:aiDotBlink 1.5s ease-in-out infinite; }
+                        </style>
+                        <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">
+                            <div class="ai-ring-widget"><div class="ai-dot-widget"></div></div>
+                            <div>
+                                <div style="font-size:12px;font-weight:600;color:#94a3b8;">Agente normativo</div>
+                            </div>
+                        </div>
+                        <div style="font-size:9px;color:#07c092;display:flex;align-items:center;gap:4px;margin-bottom:10px;">
+                            <div style="width:5px;height:5px;border-radius:50%;background:#07c092;animation:aiDotBlink 1.5s ease-in-out infinite;"></div>
+                            En línea · Búsqueda en tiempo real
+                        </div>
+                        <p style="font-size:9px;color:#334155;margin:0 0 10px;line-height:1.5;">
+                            Consulta normativa ambiental colombiana aplicable a Prebel en fuentes oficiales.
                         </p>
-                        <input id="ia-in" type="text"
-                               placeholder="Ej: residuos peligrosos 2025..."
-                               style="width:100%; background:rgba(0,0,0,0.5); border:1px solid #334155;
-                                      color:#fff; padding:11px 14px; border-radius:8px; margin-bottom:10px;
-                                      font-size:0.78rem; outline:none; box-sizing:border-box;
-                                      transition:border-color 0.2s;"
-                               onfocus="this.style.borderColor='#00f3ff'"
-                               onblur="this.style.borderColor='#334155'">
-                        <button id="ia-bt"
-                                style="width:100%; height:42px; background:#00f3ff; color:#000;
-                                       border:none; border-radius:8px; font-weight:900; cursor:pointer;
-                                       font-size:0.72rem; letter-spacing:1.5px; display:flex;
-                                       align-items:center; justify-content:center; gap:8px;">
-                            <i class="fas fa-search"></i> ESCANEAR NORMATIVA
+                        <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:14px;">
+                            <span style="font-size:8px;color:#334155;background:rgba(255,255,255,0.03);border:0.5px solid rgba(255,255,255,0.06);border-radius:4px;padding:2px 7px;">Minambiente</span>
+                            <span style="font-size:8px;color:#334155;background:rgba(255,255,255,0.03);border:0.5px solid rgba(255,255,255,0.06);border-radius:4px;padding:2px 7px;">AMVA</span>
+                            <span style="font-size:8px;color:#334155;background:rgba(255,255,255,0.03);border:0.5px solid rgba(255,255,255,0.06);border-radius:4px;padding:2px 7px;">CORNARE</span>
+                            <span style="font-size:8px;color:#334155;background:rgba(255,255,255,0.03);border:0.5px solid rgba(255,255,255,0.06);border-radius:4px;padding:2px 7px;">IDEAM</span>
+                            <span style="font-size:8px;color:#334155;background:rgba(255,255,255,0.03);border:0.5px solid rgba(255,255,255,0.06);border-radius:4px;padding:2px 7px;">ANLA</span>
+                        </div>
+                        <button id="ia-bt" onclick="window._abrirModalIA()"
+                                style="width:100%;height:38px;background:#07c092;color:#030711;border:none;border-radius:8px;font-weight:700;cursor:pointer;font-size:10px;letter-spacing:0.5px;display:flex;align-items:center;justify-content:center;gap:8px;">
+                            ⌕ Abrir consulta
                         </button>
                     </div>
                 </div>
 
-                <div style="grid-column:span 12; background:rgba(15,23,42,0.6);
-                     border:1px solid rgba(0,243,255,0.15); border-radius:16px; padding:25px;
-                     display:flex; align-items:center; justify-content:space-between; margin:10px 0;">
-                    <div style="width:280px;">
-                        <h4 style="color:#00f3ff; font-size:0.8rem; font-weight:900; letter-spacing:3px; margin:0;">
-                            CUMPLIMIENTO TOTAL
-                        </h4>
-                        <p style="color:#64748b; font-size:0.65rem; margin:8px 0 0;">
-                            Seleccione un punto para ver el detalle mensual.
-                        </p>
+                <div style="grid-column:span 12; background:rgba(15,23,42,0.6); border:0.5px solid rgba(255,255,255,0.06); border-radius:12px; padding:24px 28px; margin:10px 0; display:flex; align-items:stretch; gap:24px; min-height:160px;">
+
+                    <!-- Izquierda: valor global + botón -->
+                    <div style="min-width:140px;display:flex;flex-direction:column;justify-content:center;gap:8px;">
+                        <div style="font-size:8px;color:#334155;text-transform:uppercase;letter-spacing:1.5px;">Tendencia global</div>
+                        <div style="font-size:2.4rem;font-weight:700;color:${global >= 90 ? '#07c092' : global >= 70 ? '#ffc107' : '#ff3b30'};line-height:1;">${global}%</div>
+                        <div style="font-size:9px;color:#07c092;display:flex;align-items:center;gap:4px;">
+                            <div style="width:5px;height:5px;border-radius:50%;background:#07c092;"></div> Estable · ${mesesCentral[mesesCentral.length-1]}
+                        </div>
+                        <button onclick="window._registrarRevision()" style="margin-top:8px;background:rgba(7,192,146,0.1);border:0.5px solid #07c092;color:#07c092;border-radius:6px;padding:7px 10px;font-size:9px;font-weight:600;cursor:pointer;letter-spacing:0.5px;text-align:left;transition:background 0.2s;"
+                            onmouseover="this.style.background='rgba(7,192,146,0.2)'" onmouseout="this.style.background='rgba(7,192,146,0.1)'">
+                            <i class="fas fa-check-circle" style="margin-right:5px;"></i>Registrar revisión
+                        </button>
+                        <button onclick="window._deshacerRevision()" style="margin-top:4px;background:rgba(226,75,74,0.08);border:0.5px solid rgba(226,75,74,0.4);color:#E24B4A;border-radius:6px;padding:6px 10px;font-size:9px;font-weight:600;cursor:pointer;text-align:left;transition:background 0.2s;"
+                            onmouseover="this.style.background='rgba(226,75,74,0.15)'" onmouseout="this.style.background='rgba(226,75,74,0.08)'">
+                            <i class="fas fa-undo" style="margin-right:5px;"></i>Deshacer último
+                        </button>
+                        <button onclick="window._abrirHistoricoManual()" style="margin-top:4px;background:rgba(56,189,248,0.08);border:0.5px solid rgba(56,189,248,0.3);color:#38bdf8;border-radius:6px;padding:6px 10px;font-size:9px;font-weight:600;cursor:pointer;text-align:left;transition:background 0.2s;"
+                            onmouseover="this.style.background='rgba(56,189,248,0.15)'" onmouseout="this.style.background='rgba(56,189,248,0.08)'">
+                            <i class="fas fa-edit" style="margin-right:5px;"></i>Ingresar histórico
+                        </button>
                     </div>
-                    <div style="flex-grow:1; height:130px; margin:0 40px;">
-                        <svg viewBox="-20 -40 640 180" preserveAspectRatio="none"
-                             style="width:100%; height:100%; overflow:visible;">
-                            <polyline points="${ptsGlobal}" fill="none" stroke="#00f3ff"
-                                      stroke-width="4" stroke-linecap="round" stroke-linejoin="round" />
-                            ${nodosGlobal}
-                        </svg>
+
+                    <!-- Centro: barras -->
+                    <div style="flex:2;">
+                        ${(() => {
+                            const maxV = Math.max(...histTotal);
+                            const minV = Math.min(...histTotal) - 2;
+                            const range = maxV - minV || 1;
+                            const bars = histTotal.map((v, i) => {
+                                const h = Math.round(((v - minV) / range) * 100);
+                                const isLast = i === histTotal.length - 1;
+                                const col = isLast ? '#07c092' : 'rgba(7,192,146,' + (0.3 + i * 0.08) + ')';
+                                const delay = (i * 0.1).toFixed(1);
+                                const obs = localStorage.getItem('prebel_obs_' + i) ? '●' : '';
+                                return '<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;cursor:pointer;" onclick="window._selectBar(' + i + ',' + v + ')">'
+                                    + '<span style="font-size:8px;color:' + (isLast ? '#07c092' : '#94a3b8') + ';font-weight:' + (isLast ? '600' : '400') + ';animation:fadeUpTrend 0.4s ease ' + delay + 's both;opacity:0;">' + v + '%</span>'
+                                    + '<div style="width:100%;background:#0f172a;border-radius:3px 3px 0 0;overflow:hidden;height:90px;display:flex;align-items:flex-end;">'
+                                    + '<div style="width:100%;height:' + h + '%;background:' + col + ';border-radius:3px 3px 0 0;transform-origin:bottom;animation:barUpTrend 0.7s cubic-bezier(0.34,1.2,0.64,1) ' + delay + 's both;"></div>'
+                                    + '</div>'
+                                    + '<span style="font-size:7px;color:#07c092;">' + obs + '</span>'
+                                    + '</div>';
+                            }).join('');
+                            return '<style>@keyframes barUpTrend{from{transform:scaleY(0)}to{transform:scaleY(1)}}@keyframes fadeUpTrend{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}</style>'
+                                + '<div style="display:flex;align-items:flex-end;gap:6px;">' + bars + '</div>'
+                                + '<div style="display:flex;gap:6px;margin-top:6px;border-top:0.5px solid #0f172a;padding-top:5px;">'
+                                + mesesCentral.map((m, i) => '<span style="flex:1;text-align:center;font-size:8px;color:#94a3b8;">' + m + '</span>').join('')
+                                + '</div>';
+                        })()}
                     </div>
-                    <div style="text-align:right; width:150px;">
-                        <div style="font-size:2.5rem; font-weight:900; color:#fff; line-height:1;">${global}%</div>
-                        <div style="color:#00ff80; font-size:0.65rem; font-weight:800; margin-top:5px;">● ESTABLE</div>
+
+                    <!-- Derecha: box observación -->
+                    <div id="box-obs-trend" style="flex:1;background:rgba(0,0,0,0.2);border:0.5px solid rgba(255,255,255,0.05);border-radius:8px;padding:16px;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;min-width:220px;">
+                        <i class="fas fa-hand-pointer" style="font-size:1.2rem;color:#1e293b;margin-bottom:8px;"></i>
+                        <p style="font-size:9px;color:#1e293b;text-transform:uppercase;letter-spacing:1px;">Clic en una barra<br>para añadir observación</p>
                     </div>
                 </div>
 
@@ -1659,7 +1829,383 @@ Para cada norma encontrada indica: nombre/número, fecha, autoridad emisora, por
                 </div>
             </div>`;
 
+        // ── Registrar revisión mensual ─────────────────────────
+        window._abrirModalVigilancia = () => {
+            const existing = document.getElementById('vig-modal-overlay');
+            if (existing) existing.remove();
+            const stack = window._vigStack || [];
+            const overlay = document.createElement('div');
+            overlay.id = 'vig-modal-overlay';
+            overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.75);display:flex;align-items:center;justify-content:center;z-index:9999;backdrop-filter:blur(4px);';
+
+            overlay.innerHTML = '<style>@keyframes modalIn{from{opacity:0;transform:scale(0.95) translateY(8px)}to{opacity:1;transform:scale(1) translateY(0)}}@keyframes slideIn{from{opacity:0;transform:translateX(10px)}to{opacity:1;transform:translateX(0)}}</style>'
+                + '<div style="background:#060e1f;border:0.5px solid rgba(255,255,255,0.08);border-radius:14px;width:800px;max-width:95vw;height:520px;display:flex;flex-direction:column;box-shadow:0 40px 80px rgba(0,0,0,0.6);animation:modalIn 0.3s cubic-bezier(0.34,1.2,0.64,1) both;">'
+                + '<div style="padding:14px 20px;border-bottom:0.5px solid rgba(255,255,255,0.06);display:flex;align-items:center;justify-content:space-between;">'
+                + '<div style="display:flex;align-items:center;gap:10px;"><span style="font-size:16px;">⏱</span><span style="font-size:13px;font-weight:600;color:#94a3b8;">Normas en vigilancia</span>'
+                + '<span style="font-size:9px;color:#BA7517;background:rgba(186,117,23,0.1);border:0.5px solid rgba(186,117,23,0.3);border-radius:99px;padding:2px 10px;">' + stack.length + ' normas · +365 días</span></div>'
+                + '<div id="vig-modal-close" style="width:28px;height:28px;border-radius:50%;background:rgba(255,255,255,0.04);border:0.5px solid rgba(255,255,255,0.08);color:#475569;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:12px;">✕</div>'
+                + '</div>'
+                + '<div style="display:flex;flex:1;overflow:hidden;">'
+                + '<div id="vig-list" style="width:260px;flex-shrink:0;border-right:0.5px solid rgba(255,255,255,0.06);overflow-y:auto;padding:10px 10px;"></div>'
+                + '<div id="vig-detail" style="flex:1;overflow-y:auto;padding:16px 20px;display:flex;align-items:center;justify-content:center;"><p style="font-size:10px;color:#1e293b;text-transform:uppercase;letter-spacing:1px;">Selecciona una norma</p></div>'
+                + '</div></div>';
+
+            document.body.appendChild(overlay);
+            document.getElementById('vig-modal-close').onclick = () => overlay.remove();
+            overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+
+            // Build norm list
+            const listEl = document.getElementById('vig-list');
+            stack.forEach((v, idx) => {
+                const daysColor = v.dias > 500 ? '#E24B4A' : v.dias > 400 ? '#BA7517' : '#94a3b8';
+                const card = document.createElement('div');
+                card.style.cssText = 'background:rgba(255,255,255,0.02);border:0.5px solid rgba(255,255,255,0.05);border-left:3px solid rgba(186,117,23,0.4);border-radius:7px;padding:9px 12px;margin-bottom:7px;cursor:pointer;transition:background 0.15s,border-left-color 0.15s;';
+                card.innerHTML = '<div style="font-size:10px;font-weight:600;color:#94a3b8;margin-bottom:4px;">' + v.n + '</div>'
+                    + '<div style="display:flex;justify-content:space-between;align-items:center;">'
+                    + '<span style="font-size:8px;font-weight:600;color:#854F0B;background:rgba(186,117,23,0.15);padding:1px 5px;border-radius:3px;">' + v.c + '</span>'
+                    + '<span style="font-size:8px;color:' + daysColor + '">' + v.dias + ' días</span></div>';
+
+                card.onmouseover = () => { card.style.background = 'rgba(186,117,23,0.06)'; card.style.borderLeftColor = '#BA7517'; };
+                card.onmouseout = () => { if (!card.classList.contains('active')) { card.style.background = 'rgba(255,255,255,0.02)'; card.style.borderLeftColor = 'rgba(186,117,23,0.4)'; } };
+                card.onclick = () => {
+                    // Deselect all
+                    listEl.querySelectorAll('div').forEach(d => { d.style.background = 'rgba(255,255,255,0.02)'; d.style.borderLeftColor = 'rgba(186,117,23,0.4)'; d.classList.remove('active'); });
+                    card.style.background = 'rgba(186,117,23,0.08)';
+                    card.style.borderLeftColor = '#BA7517';
+                    card.classList.add('active');
+                    window._mostrarDetalleVig(v);
+                };
+                listEl.appendChild(card);
+            });
+
+            // Auto-select first
+            if (stack.length > 0) {
+                const first = listEl.querySelector('div');
+                if (first) { first.style.background = 'rgba(186,117,23,0.08)'; first.style.borderLeftColor = '#BA7517'; first.classList.add('active'); }
+                window._mostrarDetalleVig(stack[0]);
+            }
+        };
+
+        window._mostrarDetalleVig = (v) => {
+            const det = document.getElementById('vig-detail');
+            if (!det) return;
+            const daysColor = v.dias > 500 ? '#E24B4A' : v.dias > 400 ? '#BA7517' : '#94a3b8';
+            det.style.alignItems = 'flex-start';
+            det.style.justifyContent = 'flex-start';
+            det.style.animation = 'slideIn 0.25s ease both';
+            det.innerHTML = ''
+                + '<div style="width:100%;">'
+                + '<div style="margin-bottom:14px;">'
+                + '<div style="font-size:14px;font-weight:600;color:#e2e8f0;margin-bottom:5px;">' + v.n + '</div>'
+                + '<div style="display:flex;align-items:center;gap:8px;font-size:9px;color:#BA7517;">'
+                + '<div style="width:6px;height:6px;border-radius:50%;background:' + (v.color || '#BA7517') + ';"></div>'
+                + v.c + (v.sede ? ' · ' + v.sede : '') + '</div></div>'
+                + '<div style="display:flex;align-items:center;gap:8px;background:rgba(226,75,74,0.06);border:0.5px solid rgba(226,75,74,0.2);border-radius:6px;padding:8px 12px;margin-bottom:14px;">'
+                + '<span style="color:#E24B4A;font-size:12px;">⚠</span>'
+                + '<span style="font-size:9px;color:' + daysColor + ';font-weight:600;">' + v.dias + ' días sin actualizar · Última act: ' + (v.fecha || '—') + '</span></div>'
+                + (v.tema ? '<div style="margin-bottom:12px;"><div style="font-size:8px;color:#334155;text-transform:uppercase;letter-spacing:1px;margin-bottom:3px;">Tema</div><div style="font-size:10px;color:#94a3b8;">' + v.tema + '</div></div><div style="height:0.5px;background:rgba(255,255,255,0.04);margin-bottom:12px;"></div>' : '')
+                + (v.objeto ? '<div style="margin-bottom:12px;"><div style="font-size:8px;color:#334155;text-transform:uppercase;letter-spacing:1px;margin-bottom:3px;">Objeto de la norma</div><div style="font-size:10px;color:#64748b;line-height:1.5;">' + v.objeto + '</div></div><div style="height:0.5px;background:rgba(255,255,255,0.04);margin-bottom:12px;"></div>' : '')
+                + (v.evidencia ? '<div style="margin-bottom:12px;"><div style="font-size:8px;color:#334155;text-transform:uppercase;letter-spacing:1px;margin-bottom:3px;">Evidencia de cumplimiento</div><div style="font-size:10px;color:#64748b;line-height:1.5;">' + v.evidencia + '</div></div><div style="height:0.5px;background:rgba(255,255,255,0.04);margin-bottom:12px;"></div>' : '')
+                + (v.observacion ? '<div style="margin-bottom:12px;"><div style="font-size:8px;color:#334155;text-transform:uppercase;letter-spacing:1px;margin-bottom:3px;">Observación</div><div style="font-size:10px;color:#64748b;line-height:1.5;">' + v.observacion + '</div></div>' : '')
+                + '</div>';
+        };
+
+        window._abrirModalIA = () => {
+            // Crear overlay si no existe
+            if (document.getElementById('agente-modal-overlay')) {
+                document.getElementById('agente-modal-overlay').style.display = 'flex';
+                return;
+            }
+            const overlay = document.createElement('div');
+            overlay.id = 'agente-modal-overlay';
+            overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.75);display:flex;align-items:center;justify-content:center;z-index:9999;backdrop-filter:blur(4px);';
+            overlay.innerHTML = `
+                <div style="background:#060e1f;border:0.5px solid rgba(255,255,255,0.08);border-radius:16px;width:680px;max-width:95vw;height:560px;display:flex;flex-direction:column;box-shadow:0 40px 80px rgba(0,0,0,0.6);animation:modalIn 0.3s cubic-bezier(0.34,1.2,0.64,1) both;">
+                    <style>
+                        @keyframes modalIn{from{opacity:0;transform:scale(0.95) translateY(10px)}to{opacity:1;transform:scale(1) translateY(0)}}
+                        @keyframes typingDot{0%,60%,100%{transform:translateY(0)}30%{transform:translateY(-4px)}}
+                        .ia-bubble-user{background:rgba(7,192,146,0.1);color:#5DCAA5;border:0.5px solid rgba(7,192,146,0.2);border-radius:12px;border-bottom-right-radius:3px;padding:10px 14px;font-size:10px;line-height:1.6;max-width:85%;align-self:flex-end;}
+                        .ia-bubble-ai{background:rgba(255,255,255,0.03);color:#94a3b8;border:0.5px solid rgba(255,255,255,0.06);border-radius:12px;border-bottom-left-radius:3px;padding:10px 14px;font-size:10px;line-height:1.6;max-width:85%;}
+                        .ia-bubble-ai strong{color:#e2e8f0;}
+                    </style>
+                    <!-- Header -->
+                    <div style="padding:16px 20px;border-bottom:0.5px solid rgba(255,255,255,0.06);display:flex;align-items:center;justify-content:space-between;">
+                        <div style="display:flex;align-items:center;gap:10px;">
+                            <div style="width:24px;height:24px;border-radius:50%;border:1.5px solid #07c092;display:flex;align-items:center;justify-content:center;position:relative;">
+                                <div style="width:7px;height:7px;border-radius:50%;background:#07c092;animation:aiDotBlink 1.5s ease-in-out infinite;"></div>
+                            </div>
+                            <span style="font-size:12px;font-weight:600;color:#94a3b8;">Agente normativo · Prebel</span>
+                            <span style="font-size:9px;color:#07c092;background:rgba(7,192,146,0.08);border:0.5px solid rgba(7,192,146,0.2);border-radius:99px;padding:2px 8px;">En línea</span>
+                        </div>
+                        <div id="ia-modal-close" style="width:28px;height:28px;border-radius:50%;background:rgba(255,255,255,0.04);border:0.5px solid rgba(255,255,255,0.08);color:#475569;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:12px;">✕</div>
+                    </div>
+                    <!-- Sources -->
+                    <div style="padding:8px 20px;border-bottom:0.5px solid rgba(255,255,255,0.04);display:flex;gap:5px;flex-wrap:wrap;">
+                        <span style="font-size:8px;color:#334155;background:rgba(255,255,255,0.03);border:0.5px solid rgba(255,255,255,0.05);border-radius:4px;padding:2px 7px;">Minambiente</span>
+                        <span style="font-size:8px;color:#334155;background:rgba(255,255,255,0.03);border:0.5px solid rgba(255,255,255,0.05);border-radius:4px;padding:2px 7px;">AMVA</span>
+                        <span style="font-size:8px;color:#334155;background:rgba(255,255,255,0.03);border:0.5px solid rgba(255,255,255,0.05);border-radius:4px;padding:2px 7px;">CORNARE</span>
+                        <span style="font-size:8px;color:#334155;background:rgba(255,255,255,0.03);border:0.5px solid rgba(255,255,255,0.05);border-radius:4px;padding:2px 7px;">IDEAM</span>
+                        <span style="font-size:8px;color:#334155;background:rgba(255,255,255,0.03);border:0.5px solid rgba(255,255,255,0.05);border-radius:4px;padding:2px 7px;">ANLA</span>
+                        <span style="font-size:8px;color:#334155;background:rgba(255,255,255,0.03);border:0.5px solid rgba(255,255,255,0.05);border-radius:4px;padding:2px 7px;">Diario Oficial</span>
+                    </div>
+                    <!-- Chat body -->
+                    <div id="ia-chat-body" style="flex:1;overflow-y:auto;padding:16px 20px;display:flex;flex-direction:column;gap:12px;">
+                        <div style="text-align:center;padding:20px 0;">
+                            <div style="font-size:10px;color:#1e293b;text-transform:uppercase;letter-spacing:1px;">Escribe tu consulta para comenzar</div>
+                        </div>
+                    </div>
+                    <!-- Footer -->
+                    <div style="padding:12px 20px;border-top:0.5px solid rgba(255,255,255,0.06);display:flex;gap:8px;align-items:center;">
+                        <input id="ia-modal-input" type="text" placeholder="Escribe tu consulta normativa..."
+                               style="flex:1;background:rgba(0,0,0,0.3);border:0.5px solid #1e293b;border-radius:8px;padding:10px 14px;font-size:10px;color:#94a3b8;outline:none;"
+                               onfocus="this.style.borderColor='#07c092'" onblur="this.style.borderColor='#1e293b'"/>
+                        <button id="ia-modal-send" style="background:#07c092;color:#030711;border:none;border-radius:8px;padding:10px 18px;font-size:10px;font-weight:700;cursor:pointer;white-space:nowrap;">Enviar</button>
+                    </div>
+                </div>`;
+
+            document.body.appendChild(overlay);
+
+            // Close
+            document.getElementById('ia-modal-close').onclick = () => { overlay.style.display = 'none'; };
+            overlay.onclick = (e) => { if (e.target === overlay) overlay.style.display = 'none'; };
+
+            // Send message
+            const sendMsg = () => {
+                const inp = document.getElementById('ia-modal-input');
+                const body = document.getElementById('ia-chat-body');
+                const msg = inp.value.trim();
+                if (!msg) return;
+                inp.value = '';
+
+                // User bubble
+                const userDiv = document.createElement('div');
+                userDiv.style.cssText = 'display:flex;flex-direction:column;align-items:flex-end;gap:4px;';
+                userDiv.innerHTML = '<div class="ia-bubble-user">' + msg + '</div><span style="font-size:8px;color:#1e293b;">' + new Date().toLocaleTimeString('es-CO', {hour:'2-digit',minute:'2-digit'}) + '</span>';
+                body.appendChild(userDiv);
+
+                // Typing indicator
+                const typingDiv = document.createElement('div');
+                typingDiv.style.cssText = 'display:flex;flex-direction:column;align-items:flex-start;gap:4px;';
+                typingDiv.innerHTML = '<div class="ia-bubble-ai" style="padding:10px 14px;"><span style="animation:typingDot 1s ease-in-out infinite;display:inline-block;width:5px;height:5px;border-radius:50%;background:#07c092;margin-right:3px;"></span><span style="animation:typingDot 1s ease-in-out 0.15s infinite;display:inline-block;width:5px;height:5px;border-radius:50%;background:#07c092;margin-right:3px;"></span><span style="animation:typingDot 1s ease-in-out 0.3s infinite;display:inline-block;width:5px;height:5px;border-radius:50%;background:#07c092;"></span></div>';
+                body.appendChild(typingDiv);
+                body.scrollTop = body.scrollHeight;
+
+                // Call API (placeholder - will connect when proxy is ready)
+                setTimeout(() => {
+                    body.removeChild(typingDiv);
+                    const aiDiv = document.createElement('div');
+                    aiDiv.style.cssText = 'display:flex;flex-direction:column;align-items:flex-start;gap:4px;';
+                    aiDiv.innerHTML = '<div class="ia-bubble-ai">El agente normativo estará disponible pronto. Por ahora puedes registrar tu consulta: <strong>' + msg + '</strong></div><span style="font-size:8px;color:#1e293b;">' + new Date().toLocaleTimeString('es-CO', {hour:'2-digit',minute:'2-digit'}) + '</span>';
+                    body.appendChild(aiDiv);
+                    body.scrollTop = body.scrollHeight;
+                }, 1500);
+            };
+
+            document.getElementById('ia-modal-send').onclick = sendMsg;
+            document.getElementById('ia-modal-input').addEventListener('keydown', e => { if (e.key === 'Enter') sendMsg(); });
+            document.getElementById('ia-modal-input').focus();
+        };
+
+        window._registrarRevision = () => {
+            if (!datosMatrizGlobal) return;
+            // Calcular ICLA actual
+            let si = 0, total = 0;
+            Object.values(datosMatrizGlobal).forEach(filas => {
+                filas.filter(f => f['Aspecto']).forEach(f => {
+                    const colC = Object.keys(f).find(k => limpiarTexto(k) === 'cumplimiento');
+                    if (colC) { total++; if (validarCumplimiento(f[colC])) si++; }
+                });
+            });
+            const pctActual = total > 0 ? parseFloat(((si/total)*100).toFixed(1)) : 0;
+            const ahora = new Date();
+            const mm = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+            const mesLabel = mm[ahora.getMonth()] + ' ' + String(ahora.getFullYear()).slice(2);
+            const hist = JSON.parse(localStorage.getItem('prebel_hist_revisiones') || '[]');
+            // Si ya existe este mes, actualiza; si no, agrega
+            const existeIdx = hist.findIndex(h => h.mes === mesLabel);
+            if (existeIdx >= 0) {
+                hist[existeIdx].pct = pctActual;
+            } else {
+                hist.push({ mes: mesLabel, pct: pctActual, fecha: ahora.toISOString() });
+            }
+            if (hist.length > 12) hist.shift();
+            localStorage.setItem('prebel_hist_revisiones', JSON.stringify(hist));
+            const btn = document.querySelector('button[onclick="window._registrarRevision()"]');
+            if (btn) {
+                btn.innerHTML = '<i class="fas fa-check" style="margin-right:5px;"></i>' + mesLabel + ': ' + pctActual + '%';
+                btn.style.background = 'rgba(7,192,146,0.25)';
+                setTimeout(() => window.generarAnalisis(), 600);
+            }
+        };
+
+        window._deshacerRevision = () => {
+            const hist = JSON.parse(localStorage.getItem('prebel_hist_revisiones') || '[]');
+            if (hist.length === 0) return;
+            const removido = hist.pop();
+            localStorage.setItem('prebel_hist_revisiones', JSON.stringify(hist));
+            const btn = document.querySelector('button[onclick="window._deshacerRevision()"]');
+            if (btn) {
+                btn.innerHTML = '<i class="fas fa-undo" style="margin-right:5px;"></i>Eliminado: ' + removido.mes;
+                setTimeout(() => window.generarAnalisis(), 600);
+            }
+        };
+
+        // ── Seleccionar barra para observación ─────────────────
+        window._abrirHistoricoManual = () => {
+            const box = document.getElementById('box-obs-trend');
+            if (!box) return;
+            const hist = JSON.parse(localStorage.getItem('prebel_hist_revisiones') || '[]');
+            const mesesOpts = ['Ene 26','Feb 26','Mar 26','Abr 26','May 26','Jun 26','Jul 26','Ago 26','Sep 26','Oct 26','Nov 26','Dic 26'];
+            box.style.textAlign = 'left';
+            box.style.alignItems = 'flex-start';
+            box.style.justifyContent = 'flex-start';
+            box.innerHTML = '';
+
+            const title = document.createElement('div');
+            title.style.cssText = 'font-size:10px;font-weight:600;color:#38bdf8;margin-bottom:10px;width:100%;';
+            title.textContent = 'Ingresar dato histórico';
+            box.appendChild(title);
+
+            const row = document.createElement('div');
+            row.style.cssText = 'display:flex;gap:6px;width:100%;margin-bottom:8px;';
+
+            const selMes = document.createElement('select');
+            selMes.style.cssText = 'flex:1;background:#0a1628;border:0.5px solid #334155;color:#94a3b8;border-radius:6px;padding:6px;font-size:10px;outline:none;';
+            mesesOpts.forEach(m => {
+                const opt = document.createElement('option');
+                opt.value = m;
+                opt.textContent = m;
+                selMes.appendChild(opt);
+            });
+
+            const inpPct = document.createElement('input');
+            inpPct.type = 'number';
+            inpPct.min = 0;
+            inpPct.max = 100;
+            inpPct.step = 0.1;
+            inpPct.placeholder = '% ICLA';
+            inpPct.style.cssText = 'width:80px;background:#0a1628;border:0.5px solid #334155;color:#94a3b8;border-radius:6px;padding:6px;font-size:10px;outline:none;';
+
+            row.appendChild(selMes);
+            row.appendChild(inpPct);
+            box.appendChild(row);
+
+            const addBtn = document.createElement('button');
+            addBtn.textContent = 'Agregar';
+            addBtn.style.cssText = 'width:100%;background:#38bdf8;color:#030711;border:none;border-radius:6px;padding:7px;font-size:10px;font-weight:700;cursor:pointer;margin-bottom:8px;';
+            addBtn.onclick = () => {
+                const mes = selMes.value;
+                const pct = parseFloat(inpPct.value);
+                if (!mes || isNaN(pct)) return;
+                const h = JSON.parse(localStorage.getItem('prebel_hist_revisiones') || '[]');
+                const idx = h.findIndex(x => x.mes === mes);
+                if (idx >= 0) { h[idx].pct = pct; }
+                else { h.push({ mes, pct, fecha: new Date().toISOString() }); }
+                h.sort((a, b) => {
+                    const mm = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+                    const [am, ay] = a.mes.split(' '); const [bm, by] = b.mes.split(' ');
+                    return (parseInt(ay)*12 + mm.indexOf(am)) - (parseInt(by)*12 + mm.indexOf(bm));
+                });
+                if (h.length > 12) h.shift();
+                localStorage.setItem('prebel_hist_revisiones', JSON.stringify(h));
+                inpPct.value = '';
+                addBtn.textContent = '✓ ' + mes + ': ' + pct + '%';
+                addBtn.style.background = '#064e3b';
+                addBtn.style.color = '#fff';
+                setTimeout(() => { addBtn.textContent = 'Agregar'; addBtn.style.background = '#38bdf8'; addBtn.style.color = '#030711'; window.generarAnalisis(); }, 800);
+            };
+            box.appendChild(addBtn);
+
+            // Show current saved data
+            const listTitle = document.createElement('div');
+            listTitle.style.cssText = 'font-size:9px;color:#334155;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;';
+            listTitle.textContent = 'Datos guardados';
+            box.appendChild(listTitle);
+
+            const list = document.createElement('div');
+            list.style.cssText = 'width:100%;overflow-y:auto;max-height:80px;';
+            if (hist.length === 0) {
+                list.innerHTML = '<p style="font-size:9px;color:#1e293b;">Sin datos aún</p>';
+            } else {
+                hist.forEach(h => {
+                    const row = document.createElement('div');
+                    row.style.cssText = 'display:flex;justify-content:space-between;font-size:9px;color:#475569;padding:2px 0;border-bottom:0.5px solid #0a1628;';
+                    row.innerHTML = '<span>' + h.mes + '</span><span style="color:#07c092;font-weight:600;">' + h.pct + '%</span>';
+                    list.appendChild(row);
+                });
+            }
+            box.appendChild(list);
+
+            const closeBtn = document.createElement('button');
+            closeBtn.textContent = 'Cerrar';
+            closeBtn.style.cssText = 'width:100%;background:transparent;border:0.5px solid #334155;color:#475569;border-radius:6px;padding:5px;font-size:9px;cursor:pointer;margin-top:8px;';
+            closeBtn.onclick = () => {
+                box.style.textAlign = 'center';
+                box.style.alignItems = 'center';
+                box.style.justifyContent = 'center';
+                box.innerHTML = '<i class="fas fa-hand-pointer" style="font-size:1.2rem;color:#1e293b;margin-bottom:8px;"></i><p style="font-size:9px;color:#1e293b;text-transform:uppercase;letter-spacing:1px;">Clic en una barra<br>para añadir observación</p>';
+            };
+            box.appendChild(closeBtn);
+        };
+
+        window._selectBar = (idx, val) => {
+            const box = document.getElementById("box-obs-trend");
+            if (!box) return;
+            const savedObs = localStorage.getItem("prebel_obs_" + idx) || "";
+            const mesLabel = PREBEL_CONFIG.historicoCumplimiento.meses[idx] || ("Mes " + (idx+1));
+            box.style.textAlign = "left";
+            box.style.alignItems = "flex-start";
+            box.style.justifyContent = "flex-start";
+            box.innerHTML = "";
+            const hd = document.createElement("div");
+            hd.style.cssText = "display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;width:100%;";
+            const ttl = document.createElement("span");
+            ttl.style.cssText = "font-size:11px;font-weight:600;color:#07c092;";
+            ttl.textContent = mesLabel + " · " + val + "%";
+            const closeBtn = document.createElement("span");
+            closeBtn.textContent = "✕";
+            closeBtn.style.cssText = "font-size:11px;color:#334155;cursor:pointer;";
+            closeBtn.onclick = () => {
+                box.style.textAlign = "center";
+                box.style.alignItems = "center";
+                box.style.justifyContent = "center";
+                box.innerHTML = "<i class='fas fa-hand-pointer' style='font-size:1.2rem;color:#1e293b;margin-bottom:8px;'></i><p style='font-size:9px;color:#1e293b;text-transform:uppercase;letter-spacing:1px;'>Clic en una barra<br>para añadir observación</p>";
+            };
+            hd.appendChild(ttl);
+            hd.appendChild(closeBtn);
+            const ta = document.createElement("textarea");
+            ta.id = "obs-input-" + idx;
+            ta.placeholder = "Escribe tu observación...";
+            ta.value = savedObs;
+            ta.style.cssText = "width:100%;background:rgba(0,0,0,0.3);border:0.5px solid #334155;border-radius:6px;color:#94a3b8;padding:8px;font-size:10px;resize:none;height:90px;outline:none;box-sizing:border-box;margin-bottom:8px;";
+            const saveBtn = document.createElement("button");
+            saveBtn.textContent = "Guardar";
+            saveBtn.style.cssText = "width:100%;background:#07c092;color:#030711;border:none;border-radius:6px;padding:8px;font-size:10px;font-weight:700;cursor:pointer;";
+            saveBtn.onclick = () => window._guardarObs(idx);
+            box.appendChild(hd);
+            box.appendChild(ta);
+            box.appendChild(saveBtn);
+            if (savedObs) {
+                const prev = document.createElement("p");
+                prev.style.cssText = "font-size:8px;color:#334155;margin-top:5px;";
+                prev.textContent = "Guardada: " + savedObs.substring(0,40) + (savedObs.length>40?"…":"");
+                box.appendChild(prev);
+            }
+        };
+
+        window._guardarObs = (idx) => {
+            const inp = document.getElementById('obs-input-' + idx);
+            if (!inp) return;
+            localStorage.setItem('prebel_obs_' + idx, inp.value);
+            const btn = inp.nextElementSibling;
+            if (btn) { btn.textContent = '✓ Guardado'; btn.style.background = '#064e3b'; }
+            setTimeout(() => window.generarAnalisis(), 600);
+        };
+
         inicializarAgenteIA();
+
+        const _dfEl = document.getElementById('dashboard-fecha');
+        if (_dfEl) { const _fi = localStorage.getItem('prebel_ultima_importacion'); if (_fi) _dfEl.textContent = 'Datos al ' + new Date(_fi).toLocaleDateString('es-CO',{day:'2-digit',month:'2-digit',year:'numeric'}); }
 
         gridPrincipal.style.display  = 'none';
         vistaAnalisis.style.display  = 'block';
