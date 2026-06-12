@@ -42,7 +42,7 @@ const PREBEL_CONFIG = {
 const MSAL_CONFIG = {
     clientId: '749a4f37-b73d-49c3-a8b7-96cf85ed6f5e',
     tenantId: '2213d7a7-e202-4bcd-a275-5e7f63ed8032',
-    scopes: ['Files.ReadWrite', 'User.Read']
+    scopes: ['Files.ReadWrite.AppFolder', 'User.Read']
 };
 
 let _msalToken = null;
@@ -123,7 +123,7 @@ async function _subirArchivoOneDrive(file, normaId) {
     const token = await _getToken();
     const folder = 'MatrizLegalAmbiental/Normas';
     const fileName = normaId.replace(/[^a-zA-Z0-9]/g, '_') + '_' + file.name;
-    const uploadUrl = 'https://graph.microsoft.com/v1.0/me/drive/root:/' + folder + '/' + fileName + ':/content';
+    const uploadUrl = 'https://graph.microsoft.com/v1.0/me/drive/special/approot:/' + fileName + ':/content';
 
     const res = await fetch(uploadUrl, {
         method: 'PUT',
