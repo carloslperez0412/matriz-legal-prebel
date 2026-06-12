@@ -186,16 +186,8 @@ window.gestionarAnexoIA = (idUnico) => {
     if (selectorArchivos) selectorArchivos.click();
 };
 
-window.conectarOneDrive = async () => {
-    const btn = document.getElementById('btn-onedrive-connect');
-    if (btn) { btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Conectando...'; btn.disabled = true; }
-    try {
-        await _msalLogin();
-        if (btn) { btn.innerHTML = '<i class="fas fa-check"></i> OneDrive conectado'; btn.style.background = 'rgba(7,192,146,0.2)'; btn.style.borderColor = '#07c092'; btn.style.color = '#07c092'; btn.disabled = false; }
-    } catch(e) {
-        if (btn) { btn.innerHTML = '<i class="fas fa-cloud-upload-alt"></i> Conectar OneDrive'; btn.disabled = false; }
-        alert('Login cancelado. Los archivos se guardarán localmente.');
-    }
+window.conectarOneDrive = () => {
+    alert('Los PDFs de normas se gestionan desde GitHub.\nSube tus archivos a la carpeta /normas/ del repositorio.');
 };
 
 window.registrarArchivoIA = async (idUnico) => {
@@ -206,30 +198,23 @@ window.registrarArchivoIA = async (idUnico) => {
     if (!input || !input.files.length) return;
     const archivo = input.files[0];
 
-    if (archivo.size > 50 * 1024 * 1024) {
-        alert("El archivo supera el límite de 50 MB.");
-        return;
-    }
+    // Save filename mapping to localStorage
+    // The actual PDF must be uploaded to GitHub repo under /normas/ folder
+    const githubUrl = 'https://carloslperez0412.github.io/matriz-legal-prebel/normas/' + encodeURIComponent(archivo.name);
+    const fileInfo = { name: archivo.name, url: githubUrl };
+    await _guardarMapeoArchivo(idUnico, fileInfo);
 
+    _actualizarUIAnexo(etiqueta, botonDescarga, archivo.name, '#07c092');
+
+    // Show instruction
     if (etiqueta) {
-        etiqueta.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Subiendo a OneDrive...`;
-        etiqueta.style.color = "#ffc107";
+        const hint = document.createElement('div');
+        hint.style.cssText = 'font-size:8px;color:#BA7517;margin-top:4px;';
+        hint.innerHTML = '<i class="fas fa-info-circle"></i> Sube el PDF a la carpeta /normas/ en GitHub';
+        etiqueta.parentNode.appendChild(hint);
+        setTimeout(() => hint.remove(), 5000);
     }
-
-    try {
-        const fileInfo = await _subirArchivoOneDrive(archivo, idUnico);
-        await _guardarMapeoArchivo(idUnico, fileInfo);
-        _actualizarUIAnexo(etiqueta, botonDescarga, archivo.name, '#07c092');
-        console.log("[ONEDRIVE] Archivo subido:", fileInfo.url);
-    } catch (e) {
-        console.warn("[ONEDRIVE] Error:", e.message);
-        if (etiqueta) {
-            etiqueta.innerHTML = `<i class="fas fa-exclamation-circle"></i> Error: ${e.message}`;
-            etiqueta.style.color = "#E24B4A";
-        }
-        // Fallback to localStorage
-        _guardarEnLocalStorage(idUnico, archivo, etiqueta, botonDescarga);
-    }
+    console.log("[GITHUB] Archivo registrado:", githubUrl);
 };
 
 function _guardarEnLocalStorage(idUnico, archivo, etiqueta, botonDescarga) {
@@ -269,13 +254,13 @@ function _actualizarUIAnexo(etiqueta, botonDescarga, nombreArchivo, color) {
 }
 
 window.descargarAnexoIA = async (idUnico) => {
-    // Try OneDrive first
+    // Try GitHub mapping first
     const fileInfo = await _obtenerArchivoOneDrive(idUnico);
     if (fileInfo && fileInfo.url) {
         window.open(fileInfo.url, '_blank');
         return;
     }
-    // Fallback to localStorage
+    // Fallback to localStorage base64
     const nombre = localStorage.getItem(`prebel_filename_${idUnico}`);
     const contenido = localStorage.getItem(`prebel_filedata_${idUnico}`);
     if (nombre && contenido) {
@@ -285,7 +270,7 @@ window.descargarAnexoIA = async (idUnico) => {
         a.click();
         return;
     }
-    alert('No se encontró el archivo adjunto. Por favor adjúntalo nuevamente.');
+    alert('No hay PDF asociado. Primero adjunta el archivo y súbelo a la carpeta /normas/ en GitHub.');
 };
 
 // ─────────────────────────────────────────────────────────────
