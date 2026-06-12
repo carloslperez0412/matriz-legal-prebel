@@ -181,6 +181,25 @@ let datosMatrizGlobal = null;
 // SECCIÓN 3: MOTOR DE PERSISTENCIA DOCUMENTAL
 // ─────────────────────────────────────────────────────────────
 
+window._verNorma = (idUnico) => {
+    const map = JSON.parse(localStorage.getItem('prebel_normas_archivos') || '{}');
+    const fi = map[idUnico];
+    if (fi && fi.url) {
+        window.open(fi.url, '_blank');
+    } else {
+        alert('No hay PDF asociado. Haz clic en Adjuntar primero.');
+    }
+};
+
+// Show Ver norma buttons for norms that have PDFs attached
+window._actualizarBotonesNorma = () => {
+    const map = JSON.parse(localStorage.getItem('prebel_normas_archivos') || '{}');
+    Object.keys(map).forEach(idUnico => {
+        const btn = document.getElementById('btn-norma-' + idUnico);
+        if (btn) btn.style.display = 'inline-flex';
+    });
+};
+
 window.gestionarAnexoIA = (idUnico) => {
     const selectorArchivos = document.getElementById(`in-file-${idUnico}`);
     if (selectorArchivos) selectorArchivos.click();
@@ -205,6 +224,7 @@ window.registrarArchivoIA = async (idUnico) => {
     await _guardarMapeoArchivo(idUnico, fileInfo);
 
     _actualizarUIAnexo(etiqueta, botonDescarga, archivo.name, '#07c092');
+    window._actualizarBotonesNorma();
 
     // Show instruction
     if (etiqueta) {
@@ -1204,18 +1224,15 @@ document.addEventListener('DOMContentLoaded', () => {
                         <input type="file" id="in-file-${hojaEsc}_${idx}" style="display:none;"
                                onchange="window.registrarArchivoIA('${hojaEsc}_${idx}')">
                     </button>
-                    ${(() => {
-                        const _map = JSON.parse(localStorage.getItem('prebel_normas_archivos') || '{}');
-                        const _fi = _map['${hojaEsc}_${idx}'];
-                        return _fi ? `<button onclick="window.open('${_fi.url}','_blank')"
-                            style="display:inline-flex;align-items:center;gap:5px;
-                                background:rgba(7,192,146,0.1);color:#07c092;
-                                border:0.5px solid rgba(7,192,146,0.3);
-                                border-radius:6px;padding:5px 12px;
-                                font-size:0.62rem;font-weight:800;cursor:pointer;">
-                            <i class="fas fa-file-pdf" style="font-size:0.65rem;"></i> Ver norma
-                        </button>` : '';
-                    })()}
+                    <button id="btn-norma-${hojaEsc}_${idx}"
+                        onclick="window._verNorma('${hojaEsc}_${idx}')"
+                        style="display:none;align-items:center;gap:5px;
+                            background:rgba(7,192,146,0.1);color:#07c092;
+                            border:0.5px solid rgba(7,192,146,0.3);
+                            border-radius:6px;padding:5px 12px;
+                            font-size:0.62rem;font-weight:800;cursor:pointer;">
+                        <i class="fas fa-file-pdf" style="font-size:0.65rem;"></i> Ver norma
+                    </button>
                     <button
                         onclick="window._verDetalle('${hojaEsc}', ${idx})"
                         style="
@@ -1236,6 +1253,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // Render inicial de todas las cards
         const htmlCards = registros.map((f, idx) => buildCard(f, idx)).join('');
         const total = registros.length;
+        setTimeout(() => window._actualizarBotonesNorma && window._actualizarBotonesNorma(), 100);
 
         contenidoDinamico.innerHTML = `
             <!-- Barra de búsqueda y filtros -->
