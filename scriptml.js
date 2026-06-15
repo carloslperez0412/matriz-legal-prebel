@@ -1072,7 +1072,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const obsTexto    = observacion === "---" ? "" : observacion.toString();
             const fechaRaw    = extraerDatoReal(f, "actualizacion");
             const emisor      = (f["Emisor"] || "---").toString();
-            const hojaEsc = nombreHoja.replace(/[^a-zA-Z0-9]/g, "_");
+            const hojaEsc = limpiarTexto(nombreHoja).replace(/\s+/g, "_");
 
             // Calcular días sin actualizar
             let diasSinActualizar = null;
