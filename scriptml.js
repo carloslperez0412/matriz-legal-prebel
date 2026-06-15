@@ -835,20 +835,21 @@ window.actualizarPanelDerecho = (e, componente, colorElegido) => {
                             </td>
                             <td style="padding:12px;">
                                 <div style="line-height:1.4; margin-bottom:10px;">${sintetizarIdeaIA(evid)}</div>
-                                <div style="display:flex; align-items:center; gap:8px;">
-                                    <div onclick="window.gestionarAnexoIA('${idFilaUnico}')" style="cursor:pointer; display:flex; align-items:center;">
-                                        <span id="label-file-${idFilaUnico}" style="font-size:0.55rem; color:${nombreArchivoExistente ? '#00ff80' : '#64748b'}; text-decoration:underline; font-weight:700;">
+                                <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                                    <div onclick="window.gestionarAnexoIA('resp_${idFilaUnico}')" style="cursor:pointer; display:flex; align-items:center;">
+                                        <span id="label-file-resp_${idFilaUnico}" style="font-size:0.55rem; color:${nombreArchivoExistente ? '#07c092' : '#64748b'}; text-decoration:underline; font-weight:700;">
                                             <i class="fas ${nombreArchivoExistente ? 'fa-file-check' : 'fa-paperclip'}"></i>
-                                            ${nombreArchivoExistente || 'Cargar Respaldo'}
+                                            ${nombreArchivoExistente || 'Adjuntar respaldo'}
                                         </span>
-                                        <input type="file" id="in-file-${idFilaUnico}" style="display:none;"
-                                               onchange="window.registrarArchivoIA('${idFilaUnico}')">
+                                        <input type="file" id="in-file-resp_${idFilaUnico}" style="display:none;"
+                                               onchange="window.registrarArchivoIA('resp_${idFilaUnico}')">
                                     </div>
-                                    <button id="btn-down-${idFilaUnico}"
-                                            onclick="window.descargarAnexoIA('${idFilaUnico}')"
-                                            style="display:${nombreArchivoExistente ? 'inline-block' : 'none'}; background:rgba(255,255,255,0.05); color:${colorElegido}; border:1px solid ${colorElegido}; padding:2px 6px; border-radius:3px; font-size:0.5rem; font-weight:800; cursor:pointer;">
-                                        DESCARGAR
+                                    <button id="btn-down-resp_${idFilaUnico}"
+                                            onclick="window.descargarAnexoIA('resp_${idFilaUnico}')"
+                                            style="display:${nombreArchivoExistente ? 'inline-flex' : 'none'}; align-items:center; gap:4px; background:rgba(7,192,146,0.1); color:#07c092; border:0.5px solid rgba(7,192,146,0.3); padding:3px 8px; border-radius:4px; font-size:0.55rem; font-weight:700; cursor:pointer;">
+                                        <i class="fas fa-eye" style="font-size:0.5rem;"></i> Ver respaldo
                                     </button>
+                                    <span id="norma-btn-slot-resp_${idFilaUnico}"></span>
                                 </div>
                             </td>
                             <td style="padding:12px; color:#94a3b8; font-style:italic;">${sintetizarIdeaIA(obs)}</td>
