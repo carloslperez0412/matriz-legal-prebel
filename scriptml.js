@@ -234,14 +234,7 @@ window.registrarArchivoIA = async (idUnico) => {
     await _guardarMapeoArchivo(idUnico, fileInfo);
 
     _actualizarUIAnexo(etiqueta, botonDescarga, archivo.name, '#07c092');
-    // Always inject Ver norma button directly into slot (independent of etiqueta)
-    setTimeout(() => {
-        const _slot = document.getElementById('norma-btn-slot-' + idUnico);
-        if (_slot) {
-            _slot.innerHTML = '<button onclick="window._verNorma(\'' + idUnico + '\')" style="display:inline-flex;align-items:center;gap:5px;background:rgba(7,192,146,0.1);color:#07c092;border:0.5px solid rgba(7,192,146,0.3);border-radius:6px;padding:5px 12px;font-size:0.62rem;font-weight:800;cursor:pointer;margin-left:4px;"><i class=\"fas fa-file-pdf\" style=\"font-size:0.65rem;margin-right:3px;\"></i>Ver norma</button>';
-        }
-        window._actualizarBotonesNorma();
-    }, 50);
+    setTimeout(() => window._actualizarBotonesNorma && window._actualizarBotonesNorma(), 50);
 
     // Show instruction
     if (etiqueta) {
@@ -1242,7 +1235,6 @@ document.addEventListener('DOMContentLoaded', () => {
                         <input type="file" id="in-file-${hojaEsc}_${idx}" style="display:none;"
                                onchange="window.registrarArchivoIA('${hojaEsc}_${idx}')">
                     </button>
-<span id="norma-btn-slot-${hojaEsc}_${idx}"></span>
                     <button
                         onclick="window._verDetalle('${hojaEsc}', ${idx})"
                         style="
