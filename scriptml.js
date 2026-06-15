@@ -1003,7 +1003,7 @@ window.mostrarControlCambios = async () => {
         return;
     }
 
-    const filas = datosMatrizGlobal[ccKey].filter(f => f['Norma Legal'] || f['Tema ambiental']);
+    const filas = datosMatrizGlobal[ccKey].filter(f => f['Norma Legal'] || f['Tema ambiental'] || f['Norma legal'] || f['Tema Ambiental']);
     const porMes = {};
     const mesesLabels = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
 
@@ -1296,7 +1296,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     const workbook = XLSX.read(data, { type: 'array', cellDates: true });
                     let obj = {};
                     workbook.SheetNames.forEach(s => {
-                        obj[s] = XLSX.utils.sheet_to_json(workbook.Sheets[s], { range: 3 });
+                        const isCC = limpiarTexto(s).includes('control') && limpiarTexto(s).includes('cambio');
+                        obj[s] = XLSX.utils.sheet_to_json(workbook.Sheets[s], { range: isCC ? 0 : 3 });
                     });
                     datosMatrizGlobal = obj;
 
