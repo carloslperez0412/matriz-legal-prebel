@@ -246,7 +246,7 @@ window.registrarArchivoIA = async (idUnico) => {
     await _guardarMapeoArchivo(idUnico, fileInfo);
 
     _actualizarUIAnexo(etiqueta, botonDescarga, archivo.name, '#07c092');
-    setTimeout(() => window._actualizarBotonesNorma && window._actualizarBotonesNorma(), 50);
+    setTimeout(() => window._actualizarBotonesNorma && window._actualizarBotonesNorma(), 300);
 
     // Show instruction
     if (etiqueta) {
@@ -1062,6 +1062,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (fechaGuardada) _actualizarFechaModificacion(fechaGuardada);
 
             renderTabla(datosMatrizGlobal[hKey], hKey);
+            setTimeout(() => window._actualizarBotonesNorma && window._actualizarBotonesNorma(), 300);
         }
     };
 
