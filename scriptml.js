@@ -820,7 +820,9 @@ window.actualizarPanelDerecho = (e, componente, colorElegido) => {
                         const obs  = extraerDatoReal(f, "Observacion");
                         const fechaRaw = extraerDatoReal(f, "actualizacion");
                         const idFilaUnico = `${limpiarTexto(componente)}_${idx}`;
-                        const nombreArchivoExistente = localStorage.getItem(`prebel_filename_${idFilaUnico}`);
+                        const _mapArchivos = JSON.parse(localStorage.getItem("prebel_normas_archivos") || "{}");
+                        const _fiResp = _mapArchivos["resp_" + idFilaUnico];
+                        const nombreArchivoExistente = _fiResp ? _fiResp.name : localStorage.getItem(`prebel_filename_${idFilaUnico}`);
                         return `
                         <tr style="border-bottom:1px solid rgba(255,255,255,0.03);">
                             <td style="padding:12px;">
@@ -840,7 +842,7 @@ window.actualizarPanelDerecho = (e, componente, colorElegido) => {
                                     </div>
                                     <button id="btn-down-resp_${idFilaUnico}"
                                             onclick="window.descargarAnexoIA('resp_${idFilaUnico}')"
-                                            style="display:${nombreArchivoExistente ? 'inline-flex' : 'none'}; align-items:center; gap:4px; background:rgba(7,192,146,0.1); color:#07c092; border:0.5px solid rgba(7,192,146,0.3); padding:3px 8px; border-radius:4px; font-size:0.55rem; font-weight:700; cursor:pointer;">
+                                            style="display:${_fiResp ? 'inline-flex' : 'none'}; align-items:center; gap:4px; background:rgba(7,192,146,0.1); color:#07c092; border:0.5px solid rgba(7,192,146,0.3); padding:3px 8px; border-radius:4px; font-size:0.55rem; font-weight:700; cursor:pointer;">
                                         <i class="fas fa-eye" style="font-size:0.5rem;"></i> Ver respaldo
                                     </button>
                                     <span id="norma-btn-slot-resp_${idFilaUnico}"></span>
@@ -1255,7 +1257,8 @@ document.addEventListener('DOMContentLoaded', () => {
         // Render inicial de todas las cards
         const htmlCards = registros.map((f, idx) => buildCard(f, idx)).join('');
         const total = registros.length;
-        setTimeout(() => window._actualizarBotonesNorma && window._actualizarBotonesNorma(), 100);
+        // Note: _actualizarBotonesNorma only runs in panel de componentes
+        setTimeout(() => window._actualizarBotonesNorma && window._actualizarBotonesNorma(), 200);
 
         contenidoDinamico.innerHTML = `
             <!-- Barra de búsqueda y filtros -->
