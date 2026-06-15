@@ -202,21 +202,24 @@ window._verNorma = (idUnico) => {
 window._actualizarBotonesNorma = () => {
     const map = JSON.parse(localStorage.getItem('prebel_normas_archivos') || '{}');
     Object.keys(map).forEach(key => {
+        // Normalize key to lowercase with underscores to match slot IDs
+        const normalKey = key.toLowerCase().replace(/[^a-z0-9_]/g, '_');
         if (key.startsWith('resp_')) {
-            // Respaldo slots — show Ver respaldo button
             const slot = document.getElementById('norma-btn-slot-' + key);
             if (slot && !slot.querySelector('button')) {
                 slot.innerHTML = '<button onclick="window.descargarAnexoIA(\'' + key + '\')" style="display:inline-flex;align-items:center;gap:4px;background:rgba(7,192,146,0.1);color:#07c092;border:0.5px solid rgba(7,192,146,0.3);border-radius:4px;padding:3px 8px;font-size:0.55rem;font-weight:700;cursor:pointer;"><i class="fas fa-eye" style="font-size:0.5rem;"></i> Ver respaldo</button>';
             }
-            // Also show btn-down
             const btnDown = document.getElementById('btn-down-' + key);
             if (btnDown) btnDown.style.display = 'inline-flex';
         } else {
-            // Norma slots — show Ver norma button (panel de componentes only)
-            const slot = document.getElementById('norma-btn-slot-' + key);
-            if (slot && !slot.querySelector('button')) {
-                slot.innerHTML = '<button onclick="window._verNorma(\'' + key + '\')" style="display:inline-flex;align-items:center;gap:5px;background:rgba(7,192,146,0.1);color:#07c092;border:0.5px solid rgba(7,192,146,0.3);border-radius:6px;padding:5px 12px;font-size:0.62rem;font-weight:800;cursor:pointer;margin-left:4px;"><i class="fas fa-file-pdf" style="font-size:0.65rem;margin-right:3px;"></i>Ver norma</button>';
-            }
+            // Try both original key and normalized key
+            const slotIds = ['norma-btn-slot-' + key, 'norma-btn-slot-' + normalKey];
+            slotIds.forEach(slotId => {
+                const slot = document.getElementById(slotId);
+                if (slot && !slot.querySelector('button')) {
+                    slot.innerHTML = '<button onclick="window._verNorma(\'' + key + '\')" style="display:inline-flex;align-items:center;gap:5px;background:rgba(7,192,146,0.1);color:#07c092;border:0.5px solid rgba(7,192,146,0.3);border-radius:6px;padding:5px 12px;font-size:0.62rem;font-weight:800;cursor:pointer;margin-left:4px;"><i class="fas fa-file-pdf" style="font-size:0.65rem;margin-right:3px;"></i>Ver norma</button>';
+                }
+            });
         }
     });
 };
