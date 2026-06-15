@@ -880,7 +880,7 @@ window.actualizarPanelDerecho = (e, componente, colorElegido) => {
 // SECCIÓN: CONTROL DE CAMBIOS
 // ─────────────────────────────────────────────────────────────
 
-const GITHUB_TOKEN = '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';
+const GITHUB_TOKEN = localStorage.getItem('prebel_gh_token') || '';
 const GITHUB_REPO  = 'carloslperez0412/matriz-legal-prebel';
 const CC_FILE      = 'control_cambios_checks.json';
 
