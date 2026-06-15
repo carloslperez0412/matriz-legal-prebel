@@ -1297,7 +1297,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     let obj = {};
                     workbook.SheetNames.forEach(s => {
                         const isCC = limpiarTexto(s).includes('control') && limpiarTexto(s).includes('cambio');
-                        obj[s] = XLSX.utils.sheet_to_json(workbook.Sheets[s], { range: isCC ? 0 : 3 });
+                        obj[s] = XLSX.utils.sheet_to_json(workbook.Sheets[s], { range: isCC ? 2 : 3 });
                     });
                     datosMatrizGlobal = obj;
 
