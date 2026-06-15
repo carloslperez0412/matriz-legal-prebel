@@ -228,7 +228,8 @@ window.registrarArchivoIA = async (idUnico) => {
 
     // Save filename mapping to localStorage
     // The actual PDF must be uploaded to GitHub repo under /normas/ folder
-    const githubUrl = 'https://carloslperez0412.github.io/matriz-legal-prebel/normas/' + encodeURIComponent(archivo.name);
+    const _folder = idUnico.startsWith('resp_') ? 'soportes' : 'normas';
+    const githubUrl = 'https://carloslperez0412.github.io/matriz-legal-prebel/' + _folder + '/' + encodeURIComponent(archivo.name);
     const fileInfo = { name: archivo.name, url: githubUrl };
     await _guardarMapeoArchivo(idUnico, fileInfo);
 
