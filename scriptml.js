@@ -884,39 +884,12 @@ const GITHUB_TOKEN = localStorage.getItem('prebel_gh_token') || '';
 const GITHUB_REPO  = 'carloslperez0412/matriz-legal-prebel';
 const CC_FILE      = 'control_cambios_checks.json';
 
-async function _ccCargarChecks() {
-    try {
-        const res = await fetch('https://api.github.com/repos/' + GITHUB_REPO + '/contents/' + CC_FILE, {
-            headers: { 'Authorization': 'token ' + GITHUB_TOKEN, 'Accept': 'application/vnd.github.v3+json' }
-        });
-        if (!res.ok) return JSON.parse(localStorage.getItem('prebel_cc_checks') || '{}');
-        const data = await res.json();
-        const parsed = JSON.parse(atob(data.content));
-        localStorage.setItem('prebel_cc_checks', JSON.stringify(parsed));
-        return parsed;
-    } catch(e) {
-        return JSON.parse(localStorage.getItem('prebel_cc_checks') || '{}');
-    }
+function _ccCargarChecks() {
+    return JSON.parse(localStorage.getItem('prebel_cc_checks') || '{}');
 }
 
-async function _ccGuardarChecks(checks) {
+function _ccGuardarChecks(checks) {
     localStorage.setItem('prebel_cc_checks', JSON.stringify(checks));
-    try {
-        const getRes = await fetch('https://api.github.com/repos/' + GITHUB_REPO + '/contents/' + CC_FILE, {
-            headers: { 'Authorization': 'token ' + GITHUB_TOKEN }
-        });
-        const sha = getRes.ok ? (await getRes.json()).sha : undefined;
-        const body = {
-            message: 'Actualizar checks control de cambios',
-            content: btoa(unescape(encodeURIComponent(JSON.stringify(checks, null, 2))))
-        };
-        if (sha) body.sha = sha;
-        await fetch('https://api.github.com/repos/' + GITHUB_REPO + '/contents/' + CC_FILE, {
-            method: 'PUT',
-            headers: { 'Authorization': 'token ' + GITHUB_TOKEN, 'Content-Type': 'application/json' },
-            body: JSON.stringify(body)
-        });
-    } catch(e) { console.warn('[CC] Error GitHub:', e.message); }
 }
 
 function _ccActualizarBarra(mes, normasCount, checks) {
@@ -940,9 +913,9 @@ function _ccActualizarBarra(mes, normasCount, checks) {
 }
 
 window._ccCheck = async (checkKey, value, mes, normasCount) => {
-    const checks = await _ccCargarChecks();
+    const checks = _ccCargarChecks();
     checks[checkKey] = value;
-    await _ccGuardarChecks(checks);
+    _ccGuardarChecks(checks);
     _ccActualizarBarra(mes, normasCount, checks);
 };
 
@@ -950,15 +923,15 @@ window._ccGuardarObs = async (mes) => {
     const mesKey = mes.replace(/ /g, '_');
     const ta = document.getElementById('obs-' + mesKey);
     if (!ta) return;
-    const checks = await _ccCargarChecks();
+    const checks = _ccCargarChecks();
     checks[mes + '_observacion'] = ta.value;
-    await _ccGuardarChecks(checks);
+    _ccGuardarChecks(checks);
     ta.style.borderColor = '#07c092';
     setTimeout(() => { ta.style.borderColor = '#334155'; }, 1500);
 };
 
 window._ccGenerarPDF = async (mes, normas) => {
-    const checks = await _ccCargarChecks();
+    const checks = _ccCargarChecks();
     const mesKey  = mes.replace(/ /g, '_');
     const obs     = checks[mes + '_observacion'] || '';
     const fecha   = new Date().toLocaleDateString('es-CO', { day: '2-digit', month: 'long', year: 'numeric' });
@@ -1020,7 +993,7 @@ window.mostrarControlCambios = async () => {
 
     contenedor.innerHTML = '<div style="text-align:center;padding:40px;color:#334155;font-size:12px;"><i class="fas fa-spinner fa-spin"></i> Cargando...</div>';
 
-    const checks = await _ccCargarChecks();
+    const checks = _ccCargarChecks();
 
     const ccKey = Object.keys(datosMatrizGlobal).find(k =>
         limpiarTexto(k).includes('control') && limpiarTexto(k).includes('cambio')
