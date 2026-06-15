@@ -874,6 +874,310 @@ window.actualizarPanelDerecho = (e, componente, colorElegido) => {
         </div>`;
 };
 
+
+
+// ─────────────────────────────────────────────────────────────
+// SECCIÓN: CONTROL DE CAMBIOS
+// ─────────────────────────────────────────────────────────────
+
+const GITHUB_TOKEN = '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';
+const GITHUB_REPO  = 'carloslperez0412/matriz-legal-prebel';
+const CC_FILE      = 'control_cambios_checks.json';
+
+async function _ccCargarChecks() {
+    try {
+        const res = await fetch('https://api.github.com/repos/' + GITHUB_REPO + '/contents/' + CC_FILE, {
+            headers: { 'Authorization': 'token ' + GITHUB_TOKEN, 'Accept': 'application/vnd.github.v3+json' }
+        });
+        if (!res.ok) return JSON.parse(localStorage.getItem('prebel_cc_checks') || '{}');
+        const data = await res.json();
+        const parsed = JSON.parse(atob(data.content));
+        localStorage.setItem('prebel_cc_checks', JSON.stringify(parsed));
+        return parsed;
+    } catch(e) {
+        return JSON.parse(localStorage.getItem('prebel_cc_checks') || '{}');
+    }
+}
+
+async function _ccGuardarChecks(checks) {
+    localStorage.setItem('prebel_cc_checks', JSON.stringify(checks));
+    try {
+        const getRes = await fetch('https://api.github.com/repos/' + GITHUB_REPO + '/contents/' + CC_FILE, {
+            headers: { 'Authorization': 'token ' + GITHUB_TOKEN }
+        });
+        const sha = getRes.ok ? (await getRes.json()).sha : undefined;
+        const body = {
+            message: 'Actualizar checks control de cambios',
+            content: btoa(unescape(encodeURIComponent(JSON.stringify(checks, null, 2))))
+        };
+        if (sha) body.sha = sha;
+        await fetch('https://api.github.com/repos/' + GITHUB_REPO + '/contents/' + CC_FILE, {
+            method: 'PUT',
+            headers: { 'Authorization': 'token ' + GITHUB_TOKEN, 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+        });
+    } catch(e) { console.warn('[CC] Error GitHub:', e.message); }
+}
+
+function _ccActualizarBarra(mes, normasCount, checks) {
+    const mesKey = mes.replace(/ /g, '_');
+    const total = normasCount * 3;
+    let marcados = 0;
+    for (let i = 0; i < normasCount; i++) {
+        if (checks[mes + '_' + i + '_revision']) marcados++;
+        if (checks[mes + '_' + i + '_motivo'])   marcados++;
+        if (checks[mes + '_' + i + '_tipo'])      marcados++;
+    }
+    const pct = total > 0 ? Math.round((marcados / total) * 100) : 0;
+    const barra = document.getElementById('barra-' + mesKey);
+    const pctEl = document.getElementById('pct-' + mesKey);
+    if (barra) barra.style.width = pct + '%';
+    if (pctEl) {
+        pctEl.textContent = pct + '%';
+        pctEl.style.color = pct === 100 ? '#07c092' : '#38bdf8';
+    }
+    return pct;
+}
+
+window._ccCheck = async (checkKey, value, mes, normasCount) => {
+    const checks = await _ccCargarChecks();
+    checks[checkKey] = value;
+    await _ccGuardarChecks(checks);
+    _ccActualizarBarra(mes, normasCount, checks);
+};
+
+window._ccGuardarObs = async (mes) => {
+    const mesKey = mes.replace(/ /g, '_');
+    const ta = document.getElementById('obs-' + mesKey);
+    if (!ta) return;
+    const checks = await _ccCargarChecks();
+    checks[mes + '_observacion'] = ta.value;
+    await _ccGuardarChecks(checks);
+    ta.style.borderColor = '#07c092';
+    setTimeout(() => { ta.style.borderColor = '#334155'; }, 1500);
+};
+
+window._ccGenerarPDF = async (mes, normas) => {
+    const checks = await _ccCargarChecks();
+    const mesKey  = mes.replace(/ /g, '_');
+    const obs     = checks[mes + '_observacion'] || '';
+    const fecha   = new Date().toLocaleDateString('es-CO', { day: '2-digit', month: 'long', year: 'numeric' });
+
+    let rows = '';
+    normas.forEach((f, i) => {
+        const r = checks[mes + '_' + i + '_revision'] ? '&#x2705;' : '&#x2610;';
+        const m = checks[mes + '_' + i + '_motivo']   ? '&#x2705;' : '&#x2610;';
+        const t = checks[mes + '_' + i + '_tipo']     ? '&#x2705;' : '&#x2610;';
+        rows += '<tr>'
+            + '<td style="padding:8px;border:1px solid #ddd;font-weight:600;">' + (f['Norma Legal'] || '') + '</td>'
+            + '<td style="padding:8px;border:1px solid #ddd;">' + (f['Tema ambiental'] || f['Tema'] || '') + '</td>'
+            + '<td style="padding:8px;border:1px solid #ddd;text-align:center;">' + r + '</td>'
+            + '<td style="padding:8px;border:1px solid #ddd;text-align:center;">' + m + '</td>'
+            + '<td style="padding:8px;border:1px solid #ddd;text-align:center;">' + t + '</td>'
+            + '</tr>';
+    });
+
+    const html = '<!DOCTYPE html><html><head><meta charset="UTF-8">'
+        + '<style>body{font-family:Arial,sans-serif;padding:40px;color:#1e293b;}'
+        + 'h1{color:#075985;font-size:18px;}h2{color:#0369a1;font-size:13px;margin-top:24px;}'
+        + 'table{width:100%;border-collapse:collapse;margin-top:12px;}'
+        + 'th{background:#075985;color:#fff;padding:8px;border:1px solid #ddd;font-size:11px;text-align:left;}'
+        + 'td{font-size:11px;}p{font-size:11px;line-height:1.6;}'
+        + '.firma{margin-top:40px;border-top:1px solid #ccc;padding-top:16px;}</style>'
+        + '</head><body>'
+        + '<h1>Prebel S.A.S BIC &mdash; Revisión Legal Ambiental</h1>'
+        + '<p><strong>Período:</strong> ' + mes + '<br><strong>Fecha de revisión:</strong> ' + fecha + '</p>'
+        + '<h2>Normas revisadas (' + normas.length + ')</h2>'
+        + '<table><tr><th>Norma Legal</th><th>Tema</th><th>Revisión</th><th>Motivo</th><th>Tipo</th></tr>'
+        + rows + '</table>'
+        + '<h2>Observaciones</h2>'
+        + '<p>' + (obs || 'Sin observaciones registradas.') + '</p>'
+        + '<div class="firma">'
+        + '<p><strong>Firma responsable:</strong> ___________________________</p>'
+        + '<p><strong>Cargo:</strong> ___________________________</p>'
+        + '<p><strong>Fecha:</strong> ' + fecha + '</p>'
+        + '</div></body></html>';
+
+    const win = window.open('', '_blank');
+    win.document.write(html);
+    win.document.close();
+    setTimeout(() => win.print(), 600);
+};
+
+window.mostrarControlCambios = async () => {
+    const gridPrincipal = document.getElementById('grid-principal');
+    const vistaDetalle  = document.getElementById('vista-detalle');
+    const vistaAnalisis = document.getElementById('vista-analisis');
+    const vistaCC       = document.getElementById('vista-control-cambios');
+    const contenedor    = document.getElementById('contenedor-control-cambios');
+
+    if (!datosMatrizGlobal) { alert('Primero importa la Matriz Legal.'); return; }
+
+    gridPrincipal.style.display = 'none';
+    vistaDetalle.style.display  = 'none';
+    vistaAnalisis.style.display = 'none';
+    vistaCC.style.display       = 'block';
+
+    contenedor.innerHTML = '<div style="text-align:center;padding:40px;color:#334155;font-size:12px;"><i class="fas fa-spinner fa-spin"></i> Cargando...</div>';
+
+    const checks = await _ccCargarChecks();
+
+    const ccKey = Object.keys(datosMatrizGlobal).find(k =>
+        limpiarTexto(k).includes('control') && limpiarTexto(k).includes('cambio')
+    );
+    if (!ccKey) {
+        contenedor.innerHTML = '<div style="text-align:center;padding:40px;color:#E24B4A;"><i class="fas fa-exclamation-circle"></i> No se encontró la pestaña "Control de Cambios" en la matriz.</div>';
+        return;
+    }
+
+    const filas = datosMatrizGlobal[ccKey].filter(f => f['Norma Legal'] || f['Tema ambiental']);
+    const porMes = {};
+    const mesesLabels = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+
+    filas.forEach(f => {
+        const fecha = f['Fecha'];
+        let mes = 'Sin fecha';
+        if (fecha) {
+            const d = fecha instanceof Date ? fecha : new Date(fecha);
+            if (!isNaN(d)) mes = mesesLabels[d.getMonth()] + ' ' + d.getFullYear();
+        }
+        if (!porMes[mes]) porMes[mes] = [];
+        porMes[mes].push(f);
+    });
+
+    // Store normas per mes for PDF generation
+    window._ccNormasPorMes = porMes;
+
+    const style = document.createElement('style');
+    style.textContent = '.cc-mes{background:#060e1f;border:0.5px solid rgba(255,255,255,0.06);border-radius:12px;padding:20px;margin-bottom:16px;}'
+        + '.cc-mes-hd{display:flex;align-items:center;gap:10px;margin-bottom:14px;}'
+        + '.cc-barra-bg{height:8px;background:#0a1628;border-radius:99px;overflow:hidden;flex:1;}'
+        + '.cc-barra-fill{height:100%;border-radius:99px;background:linear-gradient(90deg,#07c092,#38bdf8);transition:width 0.7s cubic-bezier(0.34,1.2,0.64,1);}'
+        + '.cc-pct{font-size:12px;font-weight:700;color:#38bdf8;min-width:42px;text-align:right;}'
+        + '.cc-norma{background:rgba(255,255,255,0.02);border:0.5px solid rgba(255,255,255,0.05);border-left:3px solid rgba(7,192,146,0.3);border-radius:8px;padding:12px 16px;margin-bottom:8px;}'
+        + '.cc-norma-name{font-size:11px;font-weight:600;color:#e2e8f0;margin-bottom:3px;}'
+        + '.cc-norma-meta{font-size:9px;color:#475569;margin-bottom:8px;}'
+        + '.cc-check-row{display:flex;align-items:center;gap:8px;padding:5px 0;cursor:pointer;}'
+        + '.cc-check-row input{width:15px;height:15px;accent-color:#07c092;cursor:pointer;}'
+        + '.cc-check-row span{font-size:10px;color:#64748b;}'
+        + '.cc-obs{width:100%;background:rgba(0,0,0,0.3);border:0.5px solid #334155;border-radius:6px;color:#94a3b8;padding:8px 10px;font-size:10px;resize:none;outline:none;box-sizing:border-box;margin-top:8px;transition:border-color 0.2s;}'
+        + '.cc-btn-sec{background:rgba(56,189,248,0.1);color:#38bdf8;border:0.5px solid rgba(56,189,248,0.3);border-radius:6px;padding:7px 14px;font-size:9px;font-weight:700;cursor:pointer;}'
+        + '.cc-btn-pri{background:#07c092;color:#030711;border:none;border-radius:6px;padding:7px 14px;font-size:9px;font-weight:700;cursor:pointer;}';
+    document.head.appendChild(style);
+
+    contenedor.innerHTML = '';
+
+    Object.keys(porMes).forEach(mes => {
+        const normas = porMes[mes];
+        const mesKey = mes.replace(/ /g, '_');
+        let marcados = 0;
+        const total = normas.length * 3;
+        normas.forEach((f, i) => {
+            if (checks[mes + '_' + i + '_revision']) marcados++;
+            if (checks[mes + '_' + i + '_motivo'])   marcados++;
+            if (checks[mes + '_' + i + '_tipo'])      marcados++;
+        });
+        const pct = total > 0 ? Math.round((marcados / total) * 100) : 0;
+
+        const mesDiv = document.createElement('div');
+        mesDiv.className = 'cc-mes';
+
+        // Header con barra
+        const hd = document.createElement('div');
+        hd.className = 'cc-mes-hd';
+        hd.innerHTML = '<span style="font-size:14px;font-weight:700;color:#94a3b8;">' + mes
+            + ' <span style="font-size:10px;color:#475569;font-weight:400;">(' + normas.length + ' normas)</span></span>'
+            + '<div class="cc-barra-bg"><div class="cc-barra-fill" id="barra-' + mesKey + '" style="width:' + pct + '%;"></div></div>'
+            + '<span class="cc-pct" id="pct-' + mesKey + '" style="color:' + (pct===100?'#07c092':'#38bdf8') + ';">' + pct + '%</span>';
+        mesDiv.appendChild(hd);
+
+        // Normas
+        normas.forEach((f, i) => {
+            const normaDiv = document.createElement('div');
+            normaDiv.className = 'cc-norma';
+
+            const nameEl = document.createElement('div');
+            nameEl.className = 'cc-norma-name';
+            nameEl.textContent = f['Norma Legal'] || 'Sin norma';
+            normaDiv.appendChild(nameEl);
+
+            const metaEl = document.createElement('div');
+            metaEl.className = 'cc-norma-meta';
+            metaEl.textContent = (f['Tema ambiental'] || f['Tema'] || '') + (f['Emisor'] ? ' · ' + f['Emisor'] : '');
+            normaDiv.appendChild(metaEl);
+
+            if (f['Objeto']) {
+                const objEl = document.createElement('div');
+                objEl.style.cssText = 'font-size:9px;color:#334155;margin-bottom:8px;line-height:1.4;';
+                objEl.textContent = f['Objeto'];
+                normaDiv.appendChild(objEl);
+            }
+
+            if (f['Motivo de cambio']) {
+                const motEl = document.createElement('div');
+                motEl.style.cssText = 'font-size:9px;color:#BA7517;background:rgba(186,117,23,0.08);border-radius:4px;padding:4px 8px;margin-bottom:8px;';
+                motEl.innerHTML = '<i class="fas fa-info-circle" style="margin-right:4px;"></i>' + f['Motivo de cambio'];
+                normaDiv.appendChild(motEl);
+            }
+
+            const chkData = [
+                { key: '_revision', label: 'Revisión de la norma' },
+                { key: '_motivo',   label: 'Motivo de actualización' },
+                { key: '_tipo',     label: 'Es de referencia o cumplimiento obligatorio' }
+            ];
+            chkData.forEach(ch => {
+                const fullKey = mes + '_' + i + ch.key;
+                const row = document.createElement('label');
+                row.className = 'cc-check-row';
+                const inp = document.createElement('input');
+                inp.type = 'checkbox';
+                inp.checked = !!checks[fullKey];
+                inp.onchange = () => window._ccCheck(fullKey, inp.checked, mes, normas.length);
+                const span = document.createElement('span');
+                span.textContent = ch.label;
+                row.appendChild(inp);
+                row.appendChild(span);
+                normaDiv.appendChild(row);
+            });
+
+            mesDiv.appendChild(normaDiv);
+        });
+
+        // Observaciones
+        const obsLabel = document.createElement('div');
+        obsLabel.style.cssText = 'font-size:9px;color:#334155;text-transform:uppercase;letter-spacing:1px;margin-top:14px;margin-bottom:5px;';
+        obsLabel.textContent = 'Observaciones del mes';
+        mesDiv.appendChild(obsLabel);
+
+        const ta = document.createElement('textarea');
+        ta.id = 'obs-' + mesKey;
+        ta.className = 'cc-obs';
+        ta.rows = 3;
+        ta.placeholder = 'Escribe las observaciones de la revisión de ' + mes + '...';
+        ta.value = checks[mes + '_observacion'] || '';
+        mesDiv.appendChild(ta);
+
+        const btnRow = document.createElement('div');
+        btnRow.style.cssText = 'display:flex;gap:8px;margin-top:10px;';
+
+        const btnObs = document.createElement('button');
+        btnObs.className = 'cc-btn-sec';
+        btnObs.innerHTML = '<i class="fas fa-save"></i> Guardar observación';
+        btnObs.onclick = () => window._ccGuardarObs(mes);
+        btnRow.appendChild(btnObs);
+
+        const btnPDF = document.createElement('button');
+        btnPDF.className = 'cc-btn-pri';
+        btnPDF.innerHTML = '<i class="fas fa-file-pdf"></i> Finalizar revisión legal';
+        btnPDF.onclick = () => window._ccGenerarPDF(mes, normas);
+        btnRow.appendChild(btnPDF);
+
+        mesDiv.appendChild(btnRow);
+        contenedor.appendChild(mesDiv);
+    });
+};
+
+
 // ─────────────────────────────────────────────────────────────
 // SECCIÓN 6: LÓGICA PRINCIPAL (DOMContentLoaded)
 // ─────────────────────────────────────────────────────────────
@@ -895,6 +1199,15 @@ document.addEventListener('DOMContentLoaded', () => {
     const btnAnalisis       = document.getElementById('btn-analisis');
     const infoModificacion  = document.getElementById('info-modificacion');
     const fechaModTexto     = document.getElementById('fecha-modificacion-texto');
+
+    // Control de cambios
+    const btnCC    = document.getElementById('btn-control-cambios');
+    const btnBackCC = document.getElementById('btn-back-control');
+    if (btnCC) btnCC.onclick = () => window.mostrarControlCambios();
+    if (btnBackCC) btnBackCC.onclick = () => {
+        document.getElementById('vista-control-cambios').style.display = 'none';
+        document.getElementById('grid-principal').style.display = 'grid';
+    };
 
     const columnasMatriz = [
         "Aspecto", "Tema", "Norma Legal", "Compilado en el Decreto 1076",
