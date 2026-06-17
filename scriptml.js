@@ -525,7 +525,10 @@ function actualizarPanelInicio() {
  * @param {string} nuevoVal  - valor nuevo
  */
 async function guardarEdicionInline(hoja, idx, campo, nuevoVal) {
-    if (!datosMatrizGlobal || !datosMatrizGlobal[hoja]) return;
+    if (!datosMatrizGlobal) return;
+    const _hojaReal = datosMatrizGlobal[hoja] ? hoja : Object.keys(datosMatrizGlobal).find(k => limpiarTexto(k).replace(/s+/g,"_") === hoja);
+    if (!_hojaReal) return;
+    hoja = _hojaReal;
 
     // 1. Actualizar en memoria
     const fila = datosMatrizGlobal[hoja][idx];
@@ -562,8 +565,9 @@ async function guardarEdicionInline(hoja, idx, campo, nuevoVal) {
  * Toggle de cumplimiento: alterna entre "1" (cumple) y "0" (no cumple)
  */
 window.toggleCumplimiento = async (btn, hoja, idx) => {
-    if (!datosMatrizGlobal || !datosMatrizGlobal[hoja]) return;
-
+    if (!datosMatrizGlobal) return;
+    hoja = datosMatrizGlobal[hoja] ? hoja : Object.keys(datosMatrizGlobal).find(k => limpiarTexto(k).replace(/s+/g,"_") === hoja);
+    if (!hoja) return;
     const fila = datosMatrizGlobal[hoja][idx];
     const claveC = Object.keys(fila).find(k => limpiarTexto(k) === "cumplimiento") || "Cumplimiento";
     const valorActual = fila[claveC];
@@ -596,8 +600,11 @@ window.toggleCumplimiento = async (btn, hoja, idx) => {
  * Modal de detalle completo de una norma [v95]
  */
 window._verDetalle = (hoja, idx) => {
-    if (!datosMatrizGlobal || !datosMatrizGlobal[hoja]) return;
-    const f = datosMatrizGlobal[hoja][idx];
+    if (!datosMatrizGlobal) return;
+    // Find the real key matching hoja (which may be limpiarTexto version)
+    let realKey = datosMatrizGlobal[hoja] ? hoja : Object.keys(datosMatrizGlobal).find(k => limpiarTexto(k).replace(/\s+/g,'_') === hoja);
+    if (!realKey) return;
+    const f = datosMatrizGlobal[realKey][idx];
     if (!f) return;
 
     const campos = [
