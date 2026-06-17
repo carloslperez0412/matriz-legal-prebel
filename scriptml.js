@@ -1545,8 +1545,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         <input type="file" id="in-file-${hojaEsc}_${idx}" style="display:none;"
                                onchange="window.registrarArchivoIA('${hojaEsc}_${idx}')">
                     </button>
-                    <span id="norma-btn-slot-${hojaEsc}_${idx}"></span>
-                    <button data-norma-url="https://carloslperez0412.github.io/matriz-legal-prebel/normas/${encodeURIComponent(norma)}.pdf"
+                    <button data-norma-url="https://carloslperez0412.github.io/matriz-legal-prebel/normas/${norma.replace(/ /g,'%20')}.pdf"
                         onclick="window.open(this.dataset.normaUrl,'_blank')"
                         style="display:inline-flex;align-items:center;gap:5px;background:rgba(7,192,146,0.1);color:#07c092;border:0.5px solid rgba(7,192,146,0.3);border-radius:6px;padding:5px 12px;font-size:0.62rem;font-weight:800;cursor:pointer;margin-left:4px;">
                         <i class="fas fa-file-pdf" style="font-size:0.65rem;margin-right:3px;"></i>Ver norma
