@@ -213,6 +213,26 @@ function inicializarFirebase() {
 let datosMatrizGlobal = null;
 
 // ─────────────────────────────────────────────────────────────
+// SECCIÓN 2B: NAVEGACIÓN ENTRE VISTAS [27/07]
+// Antes cada botón/función apagaba manualmente algunas vistas y prendía
+// otra, pero no todos los puntos de entrada apagaban las 4 — por eso
+// "Control de Cambios" (o "Detalle") podía quedar visible debajo de
+// "Análisis" o del "Panel de Componentes". Esta función es el ÚNICO
+// lugar que decide qué vista se ve: siempre apaga las 4 y prende solo
+// la solicitada, así nunca quedan dos pestañas abiertas a la vez.
+// ─────────────────────────────────────────────────────────────
+const _IDS_VISTAS = ['grid-principal', 'vista-detalle', 'vista-analisis', 'vista-control-cambios'];
+function _mostrarSoloVista(idVistaActiva) {
+    _IDS_VISTAS.forEach(id => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.style.display = (id === idVistaActiva)
+            ? (id === 'grid-principal' ? 'grid' : 'block')
+            : 'none';
+    });
+}
+
+// ─────────────────────────────────────────────────────────────
 // SECCIÓN 3: MOTOR DE PERSISTENCIA DOCUMENTAL
 // ─────────────────────────────────────────────────────────────
 
@@ -1062,6 +1082,7 @@ window.mostrarControlCambios = async () => {
     vistaDetalle.style.display  = 'none';
     vistaAnalisis.style.display = 'none';
     vistaCC.style.display       = 'block';
+    _mostrarSoloVista('vista-control-cambios'); // [NAV 27/07] refuerza que las otras 3 queden apagadas
 
     contenedor.innerHTML = '<div style="text-align:center;padding:40px;color:#334155;font-size:12px;"><i class="fas fa-spinner fa-spin"></i> Cargando...</div>';
 
@@ -1344,6 +1365,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (btnBackCC) btnBackCC.onclick = () => {
         document.getElementById('vista-control-cambios').style.display = 'none';
         document.getElementById('grid-principal').style.display = 'grid';
+        _mostrarSoloVista('grid-principal'); // [NAV 27/07] refuerza que las otras 3 queden apagadas
     };
 
     const columnasMatriz = [
@@ -1394,6 +1416,7 @@ document.addEventListener('DOMContentLoaded', () => {
         gridPrincipal.style.display  = 'grid';
         vistaDetalle.style.display   = 'none';
         vistaAnalisis.style.display  = 'none';
+        _mostrarSoloVista('grid-principal'); // [NAV 27/07] también apaga Control de Cambios, que antes quedaba visible
     };
 
     if (btnBack)         btnBack.onclick         = irHome;
@@ -1510,6 +1533,7 @@ document.addEventListener('DOMContentLoaded', () => {
             vistaAnalisis.style.display  = 'none';
             gridPrincipal.style.display  = 'none';
             vistaDetalle.style.display   = 'block';
+            _mostrarSoloVista('vista-detalle'); // [NAV 27/07] también apaga Control de Cambios, que antes quedaba visible
             tituloComponente.innerText   = componente.toUpperCase();
 
             const fechaGuardada = localStorage.getItem('prebel_ultima_importacion');
@@ -2752,6 +2776,7 @@ Para cada norma encontrada indica: nombre/número, fecha, autoridad emisora, por
 
         gridPrincipal.style.display  = 'none';
         vistaAnalisis.style.display  = 'block';
+        _mostrarSoloVista('vista-analisis'); // [NAV 27/07] también apaga Detalle y Control de Cambios, que antes quedaban visibles
     };
 
     // ── Clics en tarjetas del panel principal ─────────────────
