@@ -147,6 +147,41 @@ async function _guardarMapeoArchivo(normaId, fileInfo) {
     localStorage.setItem('prebel_normas_archivos', JSON.stringify(map));
 }
 
+/**
+ * [MIGRACIÓN — fix del 27/07] Antes del fix, los adjuntos de "Evidencia y soportes"
+ * (vista de Análisis de Cumplimiento) se guardaban con IDs que contenían ESPACIOS
+ * (ej: "resp_energia y combustibles_3"), mientras que la vista de tarjetas siempre
+ * usó IDs con guion bajo (ej: "energia_y_combustibles_3"). Ya corregido el bug para
+ * que ambas vistas generen el mismo ID, esta función SOLO agrega una copia de cada
+ * clave vieja (con espacios) bajo su forma normalizada (espacios -> "_"), sin borrar
+ * ni sobrescribir nada existente. Es segura de ejecutar múltiples veces (idempotente)
+ * y nunca puede hacer perder un archivo ya subido.
+ */
+function _migrarIdsArchivosAdjuntos() {
+    try {
+        const raw = localStorage.getItem('prebel_normas_archivos');
+        if (!raw) return;
+        const map = JSON.parse(raw);
+        let huboCambios = false;
+
+        Object.keys(map).forEach(claveVieja => {
+            if (!/\s/.test(claveVieja)) return; // solo nos interesan las que tienen espacios
+            const claveNueva = claveVieja.replace(/\s+/g, '_');
+            if (!(claveNueva in map)) {
+                map[claveNueva] = map[claveVieja]; // copiar, NO mover: la vieja queda intacta
+                huboCambios = true;
+            }
+        });
+
+        if (huboCambios) {
+            localStorage.setItem('prebel_normas_archivos', JSON.stringify(map));
+            console.log('[MIGRACIÓN] IDs de archivos normalizados (espacios → guion bajo). Ningún archivo fue eliminado.');
+        }
+    } catch (e) {
+        console.warn('[MIGRACIÓN] No se pudo normalizar prebel_normas_archivos (no afecta datos existentes):', e);
+    }
+}
+
 // ─────────────────────────────────────────────────────────────
 // SECCIÓN 1: INICIALIZACIÓN FIREBASE (UNA SOLA VEZ)
 // ─────────────────────────────────────────────────────────────
@@ -846,7 +881,11 @@ window.actualizarPanelDerecho = (e, componente, colorElegido) => {
                         const evid = extraerDatoReal(f, "Evidencia");
                         const obs  = extraerDatoReal(f, "Observacion");
                         const fechaRaw = extraerDatoReal(f, "actualizacion");
-                        const idFilaUnico = `${limpiarTexto(componente)}_${idx}`;
+                        // [FIX] Antes: `${limpiarTexto(componente)}_${idx}` (sin normalizar espacios).
+                        // Esto generaba un ID distinto al usado en la vista de tarjetas (hojaEsc),
+                        // que sí reemplaza espacios por "_". Resultado: "Ver respaldo" nunca
+                        // encontraba el archivo aunque ya estuviera subido a GitHub.
+                        const idFilaUnico = `${limpiarTexto(componente).replace(/\s+/g, "_")}_${idx}`;
                         const _mapArchivos = JSON.parse(localStorage.getItem("prebel_normas_archivos") || "{}");
                         const _fiResp = _mapArchivos["resp_" + idFilaUnico];
                         const nombreArchivoExistente = _fiResp ? _fiResp.name : localStorage.getItem(`prebel_filename_${idFilaUnico}`);
@@ -934,18 +973,27 @@ window._ccCheck = async (checkKey, value, mes, normasCount) => {
 window._ccGuardarObs = async (mes) => {
     const mesKey = mes.replace(/ /g, '_');
     const ta = document.getElementById('obs-' + mesKey);
-    if (!ta) return;
+    // [FIRMAS 27/07] Campos de responsables (pueden no existir si aún no se renderizaron)
+    const inpElaboro = document.getElementById('elaboro-' + mesKey);
+    const inpReviso  = document.getElementById('reviso-' + mesKey);
+    if (!ta && !inpElaboro && !inpReviso) return;
     const checks = _ccCargarChecks();
-    checks[mes + '_observacion'] = ta.value;
+    if (ta)         checks[mes + '_observacion'] = ta.value;
+    if (inpElaboro) checks[mes + '_elaboro']     = inpElaboro.value;
+    if (inpReviso)  checks[mes + '_reviso']      = inpReviso.value;
     _ccGuardarChecks(checks);
-    ta.style.borderColor = '#07c092';
-    setTimeout(() => { ta.style.borderColor = '#334155'; }, 1500);
+    if (ta) {
+        ta.style.borderColor = '#07c092';
+        setTimeout(() => { ta.style.borderColor = '#334155'; }, 1500);
+    }
 };
 
 window._ccGenerarPDF = async (mes, normas) => {
     const checks = _ccCargarChecks();
     const mesKey  = mes.replace(/ /g, '_');
     const obs     = checks[mes + '_observacion'] || '';
+    const elaboro = checks[mes + '_elaboro'] || ''; // [FIRMAS 27/07]
+    const reviso  = checks[mes + '_reviso']  || ''; // [FIRMAS 27/07]
     const fecha   = new Date().toLocaleDateString('es-CO', { day: '2-digit', month: 'long', year: 'numeric' });
 
     let rows = '';
@@ -977,10 +1025,22 @@ window._ccGenerarPDF = async (mes, normas) => {
         + rows + '</table>'
         + '<h2>Observaciones</h2>'
         + '<p>' + (obs || 'Sin observaciones registradas.') + '</p>'
+        // [FIRMAS 27/07] Dos columnas: elaboró / revisó, con el nombre ingresado
+        // en la pestaña y una línea para la firma física.
         + '<div class="firma">'
-        + '<p><strong>Firma responsable:</strong> ___________________________</p>'
-        + '<p><strong>Cargo:</strong> ___________________________</p>'
-        + '<p><strong>Fecha:</strong> ' + fecha + '</p>'
+        + '<div style="display:flex;gap:40px;">'
+        + '<div style="flex:1;">'
+        + '<p style="margin:0 0 4px;"><strong>Elaborado por:</strong></p>'
+        + '<p style="min-height:20px;margin:0 0 40px;">' + (elaboro || '&nbsp;') + '</p>'
+        + '<p style="border-top:1px solid #999;padding-top:4px;margin:0;font-size:10px;color:#666;">Firma</p>'
+        + '</div>'
+        + '<div style="flex:1;">'
+        + '<p style="margin:0 0 4px;"><strong>Revisado por:</strong></p>'
+        + '<p style="min-height:20px;margin:0 0 40px;">' + (reviso || '&nbsp;') + '</p>'
+        + '<p style="border-top:1px solid #999;padding-top:4px;margin:0;font-size:10px;color:#666;">Firma</p>'
+        + '</div>'
+        + '</div>'
+        + '<p style="margin-top:24px;"><strong>Fecha:</strong> ' + fecha + '</p>'
         + '</div></body></html>';
 
     const win = window.open('', '_blank');
@@ -1033,6 +1093,18 @@ window.mostrarControlCambios = async () => {
     // Store normas per mes for PDF generation
     window._ccNormasPorMes = porMes;
 
+    // [FILTRO 27/07] Orden cronológico de los meses, para saber cuál es "el último"
+    // sin depender del orden en que aparezcan las filas en el Excel.
+    const mesOrdenNum = (mesStr) => {
+        if (mesStr === 'Sin fecha') return -Infinity;
+        const [abbr, anio] = mesStr.split(' ');
+        const idxMes = mesesLabels.indexOf(abbr);
+        return parseInt(anio) * 12 + (idxMes >= 0 ? idxMes : 0);
+    };
+    const mesesConFecha  = Object.keys(porMes).filter(m => m !== 'Sin fecha').sort((a, b) => mesOrdenNum(a) - mesOrdenNum(b));
+    const mesesOrdenados = porMes['Sin fecha'] ? [...mesesConFecha, 'Sin fecha'] : mesesConFecha;
+    const mesMasReciente = mesesConFecha.length ? mesesConFecha[mesesConFecha.length - 1] : (mesesOrdenados[0] || null);
+
     const style = document.createElement('style');
     style.textContent = '.cc-mes{background:#060e1f;border:0.5px solid rgba(255,255,255,0.06);border-radius:12px;padding:20px;margin-bottom:16px;}'
         + '.cc-mes-hd{display:flex;align-items:center;gap:10px;margin-bottom:14px;}'
@@ -1047,12 +1119,52 @@ window.mostrarControlCambios = async () => {
         + '.cc-check-row span{font-size:10px;color:#64748b;}'
         + '.cc-obs{width:100%;background:rgba(0,0,0,0.3);border:0.5px solid #334155;border-radius:6px;color:#94a3b8;padding:8px 10px;font-size:10px;resize:none;outline:none;box-sizing:border-box;margin-top:8px;transition:border-color 0.2s;}'
         + '.cc-btn-sec{background:rgba(56,189,248,0.1);color:#38bdf8;border:0.5px solid rgba(56,189,248,0.3);border-radius:6px;padding:7px 14px;font-size:9px;font-weight:700;cursor:pointer;}'
-        + '.cc-btn-pri{background:#07c092;color:#030711;border:none;border-radius:6px;padding:7px 14px;font-size:9px;font-weight:700;cursor:pointer;}';
+        + '.cc-btn-pri{background:#07c092;color:#030711;border:none;border-radius:6px;padding:7px 14px;font-size:9px;font-weight:700;cursor:pointer;}'
+        + '.cc-filtro-chip{background:rgba(255,255,255,0.03);color:#64748b;border:0.5px solid rgba(255,255,255,0.1);border-radius:20px;padding:6px 14px;font-size:0.65rem;font-weight:800;letter-spacing:0.5px;cursor:pointer;white-space:nowrap;transition:all 0.15s ease;}'
+        + '.cc-filtro-chip:hover{color:#94a3b8;border-color:rgba(255,255,255,0.25);}';
     document.head.appendChild(style);
 
     contenedor.innerHTML = '';
 
-    Object.keys(porMes).forEach(mes => {
+    // [FILTRO 27/07] Barra fija arriba para saltar directo a un mes sin scrollear
+    const barraFiltro = document.createElement('div');
+    barraFiltro.style.cssText = 'position:sticky; top:0; z-index:5; background:rgba(2,6,23,0.95); backdrop-filter:blur(8px); padding:12px 0 16px; margin-bottom:16px; border-bottom:1px solid rgba(255,255,255,0.06); display:flex; align-items:center; gap:8px; flex-wrap:wrap;';
+
+    const filtroLabel = document.createElement('span');
+    filtroLabel.style.cssText = 'font-size:0.6rem; color:#475569; font-weight:800; letter-spacing:1px; text-transform:uppercase; margin-right:2px;';
+    filtroLabel.innerHTML = '<i class="fas fa-filter" style="margin-right:5px;"></i>Ver mes:';
+    barraFiltro.appendChild(filtroLabel);
+
+    const ordenChips = [...mesesConFecha].reverse(); // más reciente primero
+    if (porMes['Sin fecha']) ordenChips.push('Sin fecha');
+    ordenChips.push('todos');
+
+    ordenChips.forEach(mesChip => {
+        const chip = document.createElement('button');
+        chip.className = 'cc-filtro-chip';
+        chip.dataset.mes = mesChip;
+        chip.textContent = mesChip === 'todos' ? 'Todos' : mesChip;
+        chip.onclick = () => window._ccFiltrarMes(mesChip);
+        barraFiltro.appendChild(chip);
+    });
+
+    contenedor.appendChild(barraFiltro);
+
+    // [FILTRO 27/07] Muestra solo el mes elegido (o "todos"), y resalta el chip activo
+    window._ccFiltrarMes = (mesSeleccionado, hacerScroll = true) => {
+        document.querySelectorAll('.cc-mes').forEach(div => {
+            div.style.display = (mesSeleccionado === 'todos' || div.dataset.mesKey === mesSeleccionado) ? '' : 'none';
+        });
+        document.querySelectorAll('.cc-filtro-chip').forEach(c => {
+            const activo = c.dataset.mes === mesSeleccionado;
+            c.style.background  = activo ? 'rgba(0,243,255,0.15)' : 'rgba(255,255,255,0.03)';
+            c.style.color       = activo ? '#00f3ff' : '#64748b';
+            c.style.borderColor = activo ? '#00f3ff88' : 'rgba(255,255,255,0.1)';
+        });
+        if (hacerScroll) contenedor.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    };
+
+    mesesOrdenados.forEach(mes => {
         const normas = porMes[mes];
         const mesKey = mes.replace(/ /g, '_');
         let marcados = 0;
@@ -1066,6 +1178,7 @@ window.mostrarControlCambios = async () => {
 
         const mesDiv = document.createElement('div');
         mesDiv.className = 'cc-mes';
+        mesDiv.dataset.mesKey = mes; // [FILTRO 27/07] usado por window._ccFiltrarMes
 
         // Header con barra
         const hd = document.createElement('div');
@@ -1142,12 +1255,47 @@ window.mostrarControlCambios = async () => {
         ta.value = checks[mes + '_observacion'] || '';
         mesDiv.appendChild(ta);
 
+        // [FIRMAS 27/07] Responsables: quién elaboró y quién revisó la actualización.
+        // Estos dos nombres son los que luego aparecen como firmas en el PDF.
+        const firmasRow = document.createElement('div');
+        firmasRow.style.cssText = 'display:flex; gap:10px; margin-top:10px; flex-wrap:wrap;';
+
+        const campoElaboro = document.createElement('div');
+        campoElaboro.style.cssText = 'flex:1; min-width:180px;';
+        campoElaboro.innerHTML = '<div style="font-size:9px;color:#334155;text-transform:uppercase;letter-spacing:1px;margin-bottom:5px;"><i class="fas fa-pen-nib" style="margin-right:4px;"></i>Elaborado por</div>';
+        const inpElaboro = document.createElement('input');
+        inpElaboro.type = 'text';
+        inpElaboro.id = 'elaboro-' + mesKey;
+        inpElaboro.placeholder = 'Nombre y cargo';
+        inpElaboro.value = checks[mes + '_elaboro'] || '';
+        inpElaboro.style.cssText = 'width:100%; box-sizing:border-box; background:rgba(0,0,0,0.3); border:0.5px solid #334155; border-radius:6px; color:#94a3b8; padding:8px 10px; font-size:10px; outline:none; transition:border-color 0.2s;';
+        inpElaboro.onfocus = () => { inpElaboro.style.borderColor = '#07c092'; };
+        inpElaboro.onblur  = () => { inpElaboro.style.borderColor = '#334155'; window._ccGuardarObs(mes); };
+        campoElaboro.appendChild(inpElaboro);
+        firmasRow.appendChild(campoElaboro);
+
+        const campoReviso = document.createElement('div');
+        campoReviso.style.cssText = 'flex:1; min-width:180px;';
+        campoReviso.innerHTML = '<div style="font-size:9px;color:#334155;text-transform:uppercase;letter-spacing:1px;margin-bottom:5px;"><i class="fas fa-user-check" style="margin-right:4px;"></i>Revisado por</div>';
+        const inpReviso = document.createElement('input');
+        inpReviso.type = 'text';
+        inpReviso.id = 'reviso-' + mesKey;
+        inpReviso.placeholder = 'Nombre y cargo';
+        inpReviso.value = checks[mes + '_reviso'] || '';
+        inpReviso.style.cssText = 'width:100%; box-sizing:border-box; background:rgba(0,0,0,0.3); border:0.5px solid #334155; border-radius:6px; color:#94a3b8; padding:8px 10px; font-size:10px; outline:none; transition:border-color 0.2s;';
+        inpReviso.onfocus = () => { inpReviso.style.borderColor = '#38bdf8'; };
+        inpReviso.onblur  = () => { inpReviso.style.borderColor = '#334155'; window._ccGuardarObs(mes); };
+        campoReviso.appendChild(inpReviso);
+        firmasRow.appendChild(campoReviso);
+
+        mesDiv.appendChild(firmasRow);
+
         const btnRow = document.createElement('div');
         btnRow.style.cssText = 'display:flex;gap:8px;margin-top:10px;';
 
         const btnObs = document.createElement('button');
         btnObs.className = 'cc-btn-sec';
-        btnObs.innerHTML = '<i class="fas fa-save"></i> Guardar observación';
+        btnObs.innerHTML = '<i class="fas fa-save"></i> Guardar observación y firmas';
         btnObs.onclick = () => window._ccGuardarObs(mes);
         btnRow.appendChild(btnObs);
 
@@ -1160,6 +1308,9 @@ window.mostrarControlCambios = async () => {
         mesDiv.appendChild(btnRow);
         contenedor.appendChild(mesDiv);
     });
+
+    // [FILTRO 27/07] Por defecto se muestra solo el mes más reciente, sin scrollear
+    window._ccFiltrarMes(mesMasReciente || 'todos', false);
 };
 
 
@@ -1170,6 +1321,7 @@ window.mostrarControlCambios = async () => {
 document.addEventListener('DOMContentLoaded', () => {
 
     inicializarFirebase();
+    _migrarIdsArchivosAdjuntos(); // [FIX 27/07] normaliza IDs viejos de adjuntos sin borrar nada
 
     const gridPrincipal     = document.getElementById('grid-principal');
     const vistaDetalle      = document.getElementById('vista-detalle');
