@@ -237,7 +237,7 @@ function _mostrarSoloVista(idVistaActiva) {
 // ─────────────────────────────────────────────────────────────
 
 window._verNormaDirecta = (nombreNorma) => {
-    const nombreLimpio = encodeURIComponent(nombreNorma.trim().toUpperCase());
+    const nombreLimpio = encodeURIComponent(quitarTildes(nombreNorma).toUpperCase());
     window.open('https://carloslperez0412.github.io/matriz-legal-prebel/normas/' + nombreLimpio + '.pdf', '_blank');
 };
 
@@ -424,6 +424,31 @@ const extraerDatoReal = (fila, termino) => {
 
 const limpiarTexto = (t) =>
     t ? t.toString().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim() : "";
+
+// [SIN-TILDES 27/07] Igual que limpiarTexto pero SIN pasar a minúscula: se usa para
+// armar nombres de archivo de normas (ej. "Resolución" → "Resolucion"), ya que los
+// PDFs subidos a GitHub quedaron guardados sin acentos.
+const quitarTildes = (t) =>
+    t ? t.toString().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim() : "";
+
+// [MULTI-NORMA 27/07] Detecta cada referencia individual a una norma dentro de un
+// texto libre, sin importar si vienen en la misma frase ("Decreto 948 de 1995
+// modificado por el Decreto 1697 de 1997") o en una lista con encabezado
+// ("Resolución 760 de 2010 modificado por:" + varias líneas más). Se usa SOLO
+// para armar los botones "Ver norma" — el título de la tarjeta sigue mostrando
+// el texto tal cual está escrito en el Excel.
+const REGEX_REF_NORMA = /(?:Decreto[-\s]?Ley|Ley|Decreto|Resoluci[oó]n|Acuerdo|Circular|Ordenanza|Auto|Sentencia)\s+\d+\s+de\s+\d{4}/gi;
+const extraerNombresNormas = (texto) => {
+    if (!texto) return [];
+    const encontradas = texto.match(REGEX_REF_NORMA);
+    if (encontradas && encontradas.length) {
+        return [...new Set(encontradas.map(n => n.trim()))]; // sin duplicados
+    }
+    // Fallback: si el texto no calza con el patrón reconocido (ej. una norma
+    // técnica, un tipo de acto no listado, etc.), usamos las líneas tal cual,
+    // igual que antes, para no perder el botón por completo.
+    return texto.split(/\r?\n/).map(n => n.trim()).filter(Boolean);
+};
 
 const validarCumplimiento = (valor) => {
     if (valor === undefined || valor === null || valor === "") return false;
@@ -1556,6 +1581,12 @@ document.addEventListener('DOMContentLoaded', () => {
             // Alt+Enter (salto de línea). Las separamos para poder buscar/mostrar
             // cada una por su propio nombre en vez de tratarlas como un solo texto.
             const listaNormas = norma.split(/\r?\n/).map(n => n.trim()).filter(Boolean);
+            // [MULTI-NORMA 27/07] Lista específica para los botones "Ver norma":
+            // reconoce cada referencia real aunque estén en la misma línea con
+            // texto de conexión ("modificado por") o con un encabezado antes de
+            // la lista ("...modificado por:"). El título arriba sigue usando
+            // listaNormas tal cual, sin tocar el texto original.
+            const normasParaBotones = extraerNombresNormas(norma);
             const tema        = (f["Tema"]           || "Sin tema").toString();
             const aspecto     = (f["Aspecto"]        || "---").toString();
             const sede        = (f["Sede"]           || "---").toString();
@@ -1732,16 +1763,16 @@ document.addEventListener('DOMContentLoaded', () => {
                         <input type="file" id="in-file-${hojaEsc}_${idx}" style="display:none;"
                                onchange="window.registrarArchivoIA('${hojaEsc}_${idx}')">
                     </button>
-                    ${listaNormas.length > 1
-                        ? listaNormas.map((n, i) => `
-                    <button data-norma-url="https://carloslperez0412.github.io/matriz-legal-prebel/normas/${encodeURIComponent(n.toUpperCase())}.pdf"
+                    ${normasParaBotones.length > 1
+                        ? normasParaBotones.map((n, i) => `
+                    <button data-norma-url="https://carloslperez0412.github.io/matriz-legal-prebel/normas/${encodeURIComponent(quitarTildes(n).toUpperCase())}.pdf"
                         onclick="window.open(this.dataset.normaUrl,'_blank')"
                         title="${n}"
                         style="display:inline-flex;align-items:center;gap:5px;background:rgba(7,192,146,0.1);color:#07c092;border:0.5px solid rgba(7,192,146,0.3);border-radius:6px;padding:5px 12px;font-size:0.62rem;font-weight:800;cursor:pointer;margin-left:4px;">
                         <i class="fas fa-file-pdf" style="font-size:0.65rem;margin-right:3px;"></i>Ver norma ${i + 1}
                     </button>`).join('')
                         : `
-                    <button data-norma-url="https://carloslperez0412.github.io/matriz-legal-prebel/normas/${encodeURIComponent((listaNormas[0] || norma).toUpperCase())}.pdf"
+                    <button data-norma-url="https://carloslperez0412.github.io/matriz-legal-prebel/normas/${encodeURIComponent(quitarTildes(normasParaBotones[0] || norma).toUpperCase())}.pdf"
                         onclick="window.open(this.dataset.normaUrl,'_blank')"
                         style="display:inline-flex;align-items:center;gap:5px;background:rgba(7,192,146,0.1);color:#07c092;border:0.5px solid rgba(7,192,146,0.3);border-radius:6px;padding:5px 12px;font-size:0.62rem;font-weight:800;cursor:pointer;margin-left:4px;">
                         <i class="fas fa-file-pdf" style="font-size:0.65rem;margin-right:3px;"></i>Ver norma
