@@ -237,7 +237,7 @@ function _mostrarSoloVista(idVistaActiva) {
 // ─────────────────────────────────────────────────────────────
 
 window._verNormaDirecta = (nombreNorma) => {
-    const nombreLimpio = nombreNorma.replace(/ /g, '%20');
+    const nombreLimpio = encodeURIComponent(nombreNorma.trim().toUpperCase());
     window.open('https://carloslperez0412.github.io/matriz-legal-prebel/normas/' + nombreLimpio + '.pdf', '_blank');
 };
 
@@ -1728,7 +1728,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         <input type="file" id="in-file-${hojaEsc}_${idx}" style="display:none;"
                                onchange="window.registrarArchivoIA('${hojaEsc}_${idx}')">
                     </button>
-                    <button data-norma-url="https://carloslperez0412.github.io/matriz-legal-prebel/normas/${norma.toUpperCase().replace(/ /g,'%20')}.pdf"
+                    <button data-norma-url="https://carloslperez0412.github.io/matriz-legal-prebel/normas/${encodeURIComponent(norma.trim().toUpperCase())}.pdf"
                         onclick="window.open(this.dataset.normaUrl,'_blank')"
                         style="display:inline-flex;align-items:center;gap:5px;background:rgba(7,192,146,0.1);color:#07c092;border:0.5px solid rgba(7,192,146,0.3);border-radius:6px;padding:5px 12px;font-size:0.62rem;font-weight:800;cursor:pointer;margin-left:4px;">
                         <i class="fas fa-file-pdf" style="font-size:0.65rem;margin-right:3px;"></i>Ver norma
