@@ -1552,6 +1552,10 @@ document.addEventListener('DOMContentLoaded', () => {
         const buildCard = (f, idx, termino = '') => {
             const cumple      = validarCumplimiento(f[Object.keys(f).find(c => limpiarTexto(c) === 'cumplimiento')] ?? f['Cumplimiento']);
             const norma       = (f["Norma Legal"]   || "Sin norma").toString();
+            // [MULTI-NORMA 27/07] Una celda puede traer varias normas separadas con
+            // Alt+Enter (salto de línea). Las separamos para poder buscar/mostrar
+            // cada una por su propio nombre en vez de tratarlas como un solo texto.
+            const listaNormas = norma.split(/\r?\n/).map(n => n.trim()).filter(Boolean);
             const tema        = (f["Tema"]           || "Sin tema").toString();
             const aspecto     = (f["Aspecto"]        || "---").toString();
             const sede        = (f["Sede"]           || "---").toString();
@@ -1610,8 +1614,8 @@ document.addEventListener('DOMContentLoaded', () => {
                         <div style="font-size:0.58rem; color:#475569; font-weight:700; letter-spacing:1.5px; text-transform:uppercase; margin-bottom:3px;">
                             ${hl(aspecto)}
                         </div>
-                        <div style="font-size:0.82rem; font-weight:800; color:#f1f5f9; line-height:1.35; word-break:break-word;">
-                            ${hl(norma)}
+                        <div style="font-size:0.82rem; font-weight:800; color:#f1f5f9; line-height:1.5; word-break:break-word;">
+                            ${listaNormas.map(n => hl(n)).join('<br>')}
                         </div>
                     </div>
                     <span style="
@@ -1728,11 +1732,21 @@ document.addEventListener('DOMContentLoaded', () => {
                         <input type="file" id="in-file-${hojaEsc}_${idx}" style="display:none;"
                                onchange="window.registrarArchivoIA('${hojaEsc}_${idx}')">
                     </button>
-                    <button data-norma-url="https://carloslperez0412.github.io/matriz-legal-prebel/normas/${encodeURIComponent(norma.trim().toUpperCase())}.pdf"
+                    ${listaNormas.length > 1
+                        ? listaNormas.map((n, i) => `
+                    <button data-norma-url="https://carloslperez0412.github.io/matriz-legal-prebel/normas/${encodeURIComponent(n.toUpperCase())}.pdf"
+                        onclick="window.open(this.dataset.normaUrl,'_blank')"
+                        title="${n}"
+                        style="display:inline-flex;align-items:center;gap:5px;background:rgba(7,192,146,0.1);color:#07c092;border:0.5px solid rgba(7,192,146,0.3);border-radius:6px;padding:5px 12px;font-size:0.62rem;font-weight:800;cursor:pointer;margin-left:4px;">
+                        <i class="fas fa-file-pdf" style="font-size:0.65rem;margin-right:3px;"></i>Ver norma ${i + 1}
+                    </button>`).join('')
+                        : `
+                    <button data-norma-url="https://carloslperez0412.github.io/matriz-legal-prebel/normas/${encodeURIComponent((listaNormas[0] || norma).toUpperCase())}.pdf"
                         onclick="window.open(this.dataset.normaUrl,'_blank')"
                         style="display:inline-flex;align-items:center;gap:5px;background:rgba(7,192,146,0.1);color:#07c092;border:0.5px solid rgba(7,192,146,0.3);border-radius:6px;padding:5px 12px;font-size:0.62rem;font-weight:800;cursor:pointer;margin-left:4px;">
                         <i class="fas fa-file-pdf" style="font-size:0.65rem;margin-right:3px;"></i>Ver norma
-                    </button>
+                    </button>`
+                    }
                     <button
                         onclick="window._verDetalle('${hojaEsc}', ${idx})"
                         style="
